@@ -306,22 +306,81 @@ function call(fn, ...args) {
       google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fn](...args);
     });
   }
-  if (MODE === 'api') {
-    // text/plain 으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 바로 보낸다
-    return fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }) })
-      .then((r) => {
-        if (!r.ok) throw new Error(`서버 오류가 발생했습니다. (${r.status})`);
-        return r.json();
-      }, () => { throw new Error('서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요.'); })
-      .then((res) => {
-        if (!res.ok) throw new Error(res.error);
-        return res.data;
-      });
-  }
+  if (MODE === 'api') return callApi(fn, args);
   return new Promise((resolve, reject) => setTimeout(() => {
     try { resolve(JSON.parse(JSON.stringify(Mock[fn](...args)))); } catch (e) { reject(e); }
   }, 150));
 }
+/*
+ * GitHub Pages에서의 서버 호출
+ * 1순위: 통신용 페이지(Apps Script ?bridge=1)를 보이지 않는 iframe으로 띄우고 postMessage로 요청 → google.script.run
+ * 2순위: 통신용 페이지가 안 뜨는 환경이면 doPost(fetch). 이 방식은 구글 응답 전달(echo)이 자주 404로 실패해서 보조로만 쓴다
+ */
+const bridge = { win: null, origin: '', ready: null, broken: false, seq: 0, pending: {} };
+
+function initBridge() {
+  if (bridge.ready) return bridge.ready;
+  bridge.ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { bridge.broken = true; reject(new Error('bridge timeout')); }, 20000);
+    window.addEventListener('message', (ev) => {
+      const d = ev.data;
+      let host = '';
+      try { host = new URL(ev.origin).hostname; } catch (e) { return; }
+      if (!d || typeof d !== 'object' || !/\.googleusercontent\.com$/.test(host)) return;
+      if (d.type === 'teamoff-ready') {
+        bridge.win = ev.source; bridge.origin = ev.origin;
+        clearTimeout(timer); resolve();
+      } else if (d.type === 'teamoff-reply' && bridge.pending[d.id]) {
+        const p = bridge.pending[d.id];
+        delete bridge.pending[d.id];
+        clearTimeout(p.timer);
+        d.ok ? p.resolve(d.data) : p.reject(new Error(d.error));
+      }
+    });
+    const f = document.createElement('iframe');
+    f.src = API_URL + '?bridge=1';
+    f.title = '서버 연결';
+    f.setAttribute('aria-hidden', 'true');
+    f.tabIndex = -1;
+    f.style.cssText = 'position:absolute;left:-9999px;top:0;width:1px;height:1px;border:0;visibility:hidden';
+    document.body.appendChild(f);
+  });
+  return bridge.ready;
+}
+
+function callBridge(fn, args) {
+  return initBridge().then(() => new Promise((resolve, reject) => {
+    const id = ++bridge.seq;
+    const timer = setTimeout(() => {
+      delete bridge.pending[id];
+      reject(new Error('서버 응답이 없습니다. 잠시 후 다시 시도하세요.'));
+    }, 60000);
+    bridge.pending[id] = { resolve, reject, timer };
+    bridge.win.postMessage({ type: 'teamoff-call', id, fn, args }, bridge.origin);
+  }));
+}
+
+function callFetch(fn, args) {
+  // text/plain 으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 바로 보낸다
+  return fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }) })
+    .then((r) => {
+      if (!r.ok) throw new Error(`서버 오류가 발생했습니다. (${r.status})`);
+      return r.json();
+    }, () => { throw new Error('서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요.'); })
+    .then((res) => {
+      if (!res.ok) throw new Error(res.error);
+      return res.data;
+    });
+}
+
+function callApi(fn, args) {
+  if (bridge.broken) return callFetch(fn, args);
+  return callBridge(fn, args).catch((e) => {
+    if (e.message === 'bridge timeout') return callFetch(fn, args); // 통신용 페이지가 안 뜨면 fetch로
+    throw e;
+  });
+}
+
 /** 로그인이 필요한 API — 토큰을 첫 인자로 붙인다 */
 const api = (fn, ...args) => call(fn, getToken(), ...args);
 
