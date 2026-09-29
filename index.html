@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>슈퍼쏠 전담반 일정</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="전담반 일정">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#1f5eff">
+<style>
+  :root {
+    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --border: #e3e6eb;
+    --text: #1d2330; --muted: #6b7280; --primary: #1f5eff; --primary-weak: #e8efff;
+    --danger: #d92d20; --danger-weak: #fdecea; --warn: #b54708; --warn-weak: #fff4e5;
+    --sun: #d92d20; --sat: #2563eb; --today: #1f5eff;
+    --t-annual: #2563eb; --t-am: #0d9488; --t-pm: #7c3aed; --t-sick: #ea580c; --t-edu: #db2777; --t-etc: #64748b; --evt: #b45309; --evt-bg: #fff7ed;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115; --surface: #171a21; --surface-2: #1f232c; --border: #2a2f3a;
+      --text: #e7e9ee; --muted: #9aa3b2; --primary: #6b93ff; --primary-weak: #1c2742;
+      --danger: #ff6b5e; --danger-weak: #3a1b19; --warn: #f5a524; --warn-weak: #33260f;
+      --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
+      --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --evt: #fbbf24; --evt-bg: #2a2110;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1115; --surface: #171a21; --surface-2: #1f232c; --border: #2a2f3a;
+    --text: #e7e9ee; --muted: #9aa3b2; --primary: #6b93ff; --primary-weak: #1c2742;
+    --danger: #ff6b5e; --danger-weak: #3a1b19; --warn: #f5a524; --warn-weak: #33260f;
+    --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
+    --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --evt: #fbbf24; --evt-bg: #2a2110;
+    --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    font-size: 14px; line-height: 1.45; -webkit-text-size-adjust: 100%;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  .preview-bar { background: #111827; color: #f9fafb; font-size: 12px; padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .preview-bar select { background: #374151; color: #fff; border: 0; border-radius: 6px; padding: 3px 6px; }
+  .preview-bar button { background: transparent; color: #cbd5e1; border: 1px solid #4b5563; border-radius: 6px; padding: 2px 8px; }
+
+  header.top { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+  .top-inner { max-width: 1200px; margin: 0 auto; padding: 12px 16px 0; }
+  .brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brand h1 { font-size: 17px; margin: 0; letter-spacing: -.2px; }
+  .whoami { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .badge.admin { background: var(--primary-weak); color: var(--primary); }
+  nav.tabs { display: flex; gap: 2px; overflow-x: auto; margin-top: 8px; scrollbar-width: none; }
+  nav.tabs::-webkit-scrollbar { display: none; }
+  nav.tabs button { border: 0; background: none; padding: 10px 12px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+  nav.tabs button.on { color: var(--primary); border-bottom-color: var(--primary); }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .section-title { font-size: 15px; font-weight: 700; margin: 20px 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+
+  .btn { white-space: nowrap; border: 1px solid var(--border); background: var(--surface); padding: 8px 14px; border-radius: 8px; font-weight: 600; }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.05); }
+  .btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+  .btn.sm { padding: 5px 10px; font-size: 12px; }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn[disabled] { opacity: .5; cursor: default; }
+
+  /* summary */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { padding: 12px 14px; }
+  .stat .label { font-size: 12px; color: var(--muted); }
+  .stat .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .stat .sub { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat.warn .value { color: var(--danger); }
+
+  /* calendar */
+  .cal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 10px; flex-wrap: wrap; }
+  .month-nav { display: flex; align-items: center; gap: 4px; }
+  .month-nav h2 { font-size: 18px; margin: 0 6px; min-width: 112px; text-align: center; }
+  .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
+  .cal-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); user-select: none; }
+  .cal { overflow: hidden; }
+  .cal-head, .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cal-head div { padding: 8px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; border-bottom: 1px solid var(--border); }
+  .cal-head div:first-child { color: var(--sun); }
+  .cal-head div:last-child { color: var(--sat); }
+  .day { min-height: 112px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 4px; cursor: pointer; position: relative; min-width: 0; }
+  .day:nth-child(7n) { border-right: 0; }
+  .day:hover { background: var(--surface-2); }
+  .day.out { background: var(--bg); }
+  .day.out .dnum { opacity: .45; }
+  .day .dtop { display: flex; align-items: center; gap: 4px; min-width: 0; margin-bottom: 2px; }
+  .dnum { font-size: 12px; font-weight: 600; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; flex: none; }
+  .day.sun .dnum, .day.hol .dnum { color: var(--sun); }
+  .day.sat .dnum { color: var(--sat); }
+  .day.today .dnum { background: var(--today); color: #fff; }
+  .hname { font-size: 10.5px; color: var(--sun); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip { display: flex; align-items: center; gap: 3px; font-size: 11.5px; padding: 1px 5px; border-radius: 4px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+  .chip .nm { overflow: hidden; text-overflow: ellipsis; }
+  .chip.conflict { outline: 2px solid var(--danger); outline-offset: -1px; }
+  .chip .w { flex: none; }
+  .more { font-size: 11px; color: var(--muted); margin-top: 2px; padding-left: 4px; }
+  .t-연차 { background: var(--t-annual); } .t-오전반차 { background: var(--t-am); } .t-오후반차 { background: var(--t-pm); }
+  .t-병가 { background: var(--t-sick); } .t-연수\/교육 { background: var(--t-edu); } .t-기타 { background: var(--t-etc); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+
+  /* list items */
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .item { padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start; }
+  .item .bar { width: 4px; align-self: stretch; border-radius: 2px; flex: none; }
+  .item .body { flex: 1; min-width: 0; }
+  .item .title { font-weight: 700; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .item .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .item .actions { display: flex; gap: 6px; flex: none; }
+  .item.past { opacity: .6; }
+  .warnbox { background: var(--danger-weak); color: var(--danger); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+  .warnbox div + div { margin-top: 2px; }
+  .infobox { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .filters select, .filters input[type=month] { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: 0; }
+
+  /* modal */
+  .overlay { position: fixed; inset: 0; background: rgba(15,17,21,.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 480px; max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 20px 40px rgba(0,0,0,.2); }
+  .modal header { padding: 16px 18px 8px; display: flex; justify-content: space-between; align-items: center; }
+  .modal header h3 { margin: 0; font-size: 16px; }
+  .modal .content { padding: 4px 18px 16px; }
+  .modal footer { padding: 12px 18px 16px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border); }
+  .modal footer .spacer { flex: 1; }
+  .field { margin-top: 12px; }
+  .field > label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+  .req { color: var(--danger); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+  .seg button.on { border-color: var(--primary); background: var(--primary-weak); color: var(--primary); }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 100; max-width: calc(100% - 32px); box-shadow: 0 8px 20px rgba(0,0,0,.2); }
+  .toast.err { background: var(--danger); }
+  .loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.4); z-index: 90; }
+  .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .center-page { max-width: 440px; margin: 80px auto; padding: 28px; text-align: center; }
+  .center-page code { background: var(--surface-2); padding: 3px 8px; border-radius: 6px; }
+
+  .auth { text-align: left; }
+  .auth h2 { margin: 0 0 6px; font-size: 19px; }
+  .auth .btn.block { margin-top: 16px; }
+  .btn.block { display: block; width: 100%; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; letter-spacing: 1px; }
+  .chip.evt { background: var(--evt-bg); color: var(--evt); border: 1px solid var(--evt); font-weight: 600; }
+  .evt-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .evt-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-left: 3px solid var(--evt); }
+  .evt-item .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; min-width: 92px; }
+  .evt-item .what { flex: 1; min-width: 0; }
+  .evt-item .what b { display: block; }
+  .chip.cover { opacity: .85; background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.18) 6px 12px); }
+  .toggle.remember { align-items: flex-start; margin-top: 14px; color: var(--text); }
+  .toggle.remember input { margin-top: 3px; }
+  .whoami.btn { padding: 4px 8px; font-weight: 500; }
+  .designated { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; color: var(--text); }
+  .designated b { margin-right: 4px; font-size: 13px; }
+  .name-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
+  .msg-box { font-size: 13px; line-height: 1.55; resize: vertical; }
+  .copy-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .sub-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .sub-row select { flex: 1; min-width: 0; }
+  .part-select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+
+  @media (max-width: 640px) {
+    .top-inner { padding: 10px 12px 0; }
+    main { padding: 12px; }
+    .brand h1 { font-size: 15px; }
+    .stats { gap: 6px; }
+    .stat { padding: 10px; }
+    .stat .value { font-size: 18px; }
+    .stat .label, .stat .sub { font-size: 11px; }
+    .month-nav h2 { font-size: 16px; min-width: 96px; }
+    .day { min-height: 76px; padding: 2px; }
+    .dnum { font-size: 11px; width: 20px; height: 20px; }
+    .hname { display: none; }
+    .chip { font-size: 10px; padding: 0 3px; border-radius: 3px; }
+    .chip .ty { display: none; }
+    .item { padding: 10px 12px; }
+    .item { flex-wrap: wrap; }
+    .item .actions { width: 100%; justify-content: flex-end; }
+    .overlay { align-items: flex-end; padding: 0; }
+    .modal { max-width: none; border-radius: 16px 16px 0 0; max-height: 92vh; }
+    .row2 { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* =========================================================
+   공통 상수 / 유틸
+   ========================================================= */
+const TYPES = ['연차', '오전반차', '오후반차', '병가', '연수/교육', '기타'];
+const HALF = { '오전반차': true, '오후반차': true };
+const SHORT = { // 달력 칸에 표시하는 짧은 이름
+  '연차': '연차', '오전반차': '오전', '오후반차': '오후', '병가': '병가', '연수/교육': '교육', '기타': '기타' };
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+const PARTS = ['기획', 'QA', '개발', '퍼블', 'NP', '디자인'];
+const MAX_SUBS = 3;
+const ROLE_TEXT = { pm: 'PM', pl: 'PL', member: '파트원' };
+/** 'PM' / 'PL' / '파트원'(또는 빈칸) → pm / pl / member */
+const roleOfText = (v) => { const t = String(v || '').trim().toLowerCase(); return t === 'pm' || t === '관리자' ? 'pm' : t === 'pl' || t === '리더' ? 'pl' : 'member'; };
+
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const todayStr = () => ymd(new Date());
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtShort = (s) => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]})`; };
+const fmtRange = (l) => l.startDate === l.endDate ? fmtShort(l.startDate) : `${fmtShort(l.startDate)} ~ ${fmtShort(l.endDate)}`;
+const slots = (type) => type === '오전반차' ? 1 : type === '오후반차' ? 2 : 3;
+const overlaps = (a, b) => a.startDate <= b.endDate && b.startDate <= a.endDate && (slots(a.type) & slots(b.type)) !== 0;
+
+function eachDate(start, end, fn) {
+  for (let d = parse(start); ymd(d) <= end; d = addDays(d, 1)) fn(ymd(d), d);
+}
+
+/* =========================================================
+   로그인 토큰 — '로그인 유지'면 localStorage(180일), 아니면 창을 닫으면 지워지는 sessionStorage
+   ========================================================= */
+const TOKEN_KEY = 'team-off-token';
+let memToken = '';
+let rememberMode = true;
+const getToken = () => {
+  try { return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || memToken; } catch (e) { return memToken; }
+};
+const setToken = (t) => {
+  memToken = t || '';
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    if (t) (rememberMode ? localStorage : sessionStorage).setItem(TOKEN_KEY, t);
+  } catch (e) {}
+};
+try { rememberMode = !sessionStorage.getItem(TOKEN_KEY); } catch (e) {} // 지난번에 '로그인 유지'를 껐으면 그대로
+
+/*
+ * '이 기기에서 로그인 유지': 아이폰 사파리 등은 Apps Script 화면의 저장 공간을 앱을 닫으면 지운다.
+ * 그래서 로그인 정보를 주소(?t=)에도 붙여서, 그 주소로 홈 화면에 추가하면 계속 로그인된 상태로 열리게 한다.
+ */
+let urlToken = false; // 지금 주소에 로그인 정보가 붙어 있는지
+function readUrlToken() {
+  return new Promise((resolve) => {
+    if (!IS_GAS || !google.script.url) return resolve('');
+    google.script.url.getLocation((loc) => resolve((loc && loc.parameter && loc.parameter.t) || ''));
+  });
+}
+function syncUrlToken(t) {
+  urlToken = !!t;
+  if (IS_GAS && google.script.history) google.script.history.replace(null, t ? { t } : {});
+}
+
+/* =========================================================
+   API 호출 — 세 가지 방식을 같은 파일로 지원한다
+   - gas : Apps Script 웹 앱 주소로 열었을 때 (google.script.run)
+   - api : GitHub Pages 등 https 주소로 열었을 때 (Apps Script 웹 앱에 POST)
+   - mock: 파일로 직접 열거나 주소에 ?preview 가 있을 때 (샘플 데이터 미리보기)
+   ========================================================= */
+const IS_GAS = typeof google !== 'undefined' && google.script && google.script.run;
+const MODE = IS_GAS ? 'gas' : /^https?:$/.test(location.protocol) && !/preview/.test(location.search) ? 'api' : 'mock';
+
+// Apps Script 웹 앱 배포 ID (배포 관리에 보이는 /exec 주소의 /s/ 와 /exec 사이)
+// 주의: Apps Script가 이 파일을 내보낼 때 문자열 속 슬래시 두 개를 주석으로 잘라내므로 주소를 조각으로 조립한다
+const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzzzEiIUU3mQzt';
+const API_URL = ['https:', '', 'script.google.com', 'macros', 's', DEPLOY_ID, 'exec'].join('/');
+
+function call(fn, ...args) {
+  if (MODE === 'gas') {
+    return new Promise((resolve, reject) => {
+      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fn](...args);
+    });
+  }
+  if (MODE === 'api') {
+    // text/plain 으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 바로 보낸다
+    return fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`서버 오류가 발생했습니다. (${r.status})`);
+        return r.json();
+      }, () => { throw new Error('서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요.'); })
+      .then((res) => {
+        if (!res.ok) throw new Error(res.error);
+        return res.data;
+      });
+  }
+  return new Promise((resolve, reject) => setTimeout(() => {
+    try { resolve(JSON.parse(JSON.stringify(Mock[fn](...args)))); } catch (e) { reject(e); }
+  }, 150));
+}
+/** 로그인이 필요한 API — 토큰을 첫 인자로 붙인다 */
+const api = (fn, ...args) => call(fn, getToken(), ...args);
+
+/* 미리보기용 가짜 서버 — Code.gs와 같은 권한 규칙·필터링을 따른다. */
+const Mock = (() => {
+  const KEY = 'team-off-preview-v9';
+  const PW = 'test1234';
+  const holidays = [
+    ['2026-01-01', '신정'], ['2026-02-16', '설날 연휴'], ['2026-02-17', '설날'], ['2026-02-18', '설날 연휴'],
+    ['2026-03-02', '삼일절 대체공휴일'], ['2026-05-05', '어린이날'], ['2026-05-25', '부처님오신날 대체공휴일'],
+    ['2026-06-03', '전국동시지방선거'], ['2026-08-17', '광복절 대체공휴일'],
+    ['2026-09-24', '추석 연휴'], ['2026-09-25', '추석'], ['2026-09-26', '추석 연휴'],
+    ['2026-10-05', '개천절 대체공휴일'], ['2026-10-09', '한글날'], ['2026-12-25', '성탄절'],
+  ].map(([date, name]) => ({ date, name }));
+  const seed = () => {
+    const t = new Date();
+    const rel = (n) => ymd(addDays(t, n));
+    let id = 0;
+    const L = (email, type, s, e, subs, memo) => ({ id: 'L' + (++id), email, type, startDate: rel(s), endDate: rel(e), substitutes: [].concat(subs), memo: memo || '' });
+    const U = (email, name, role, part, viewAll) => ({ email, name, role, part, viewAll: !!viewAll, password: PW, mustChange: false });
+    return {
+      users: [
+        U('lead@example.com', '김팀장', 'pm', ''),
+        U('lee@example.com', '이대리', 'pl', '개발'), U('park@example.com', '박과장', 'member', '개발'),
+        U('choi@example.com', '최주임', 'pl', 'QA'), U('jung@example.com', '정사원', 'member', 'QA'),
+        U('han@example.com', '한디자', 'member', '디자인'),
+        U('yoon@example.com', '윤주임', 'member', '기획', true),
+      ],
+      leaves: [
+        L('lee@example.com', '연차', 2, 3, 'park@example.com', '가족 행사'),
+        L('park@example.com', '오후반차', 3, 3, 'choi@example.com', '병원'),
+        L('choi@example.com', '오전반차', 8, 8, 'jung@example.com'),
+        L('jung@example.com', '오후반차', 8, 8, 'choi@example.com'),
+        L('lead@example.com', '연차', 14, 16, ['park@example.com', 'choi@example.com'], '여름휴가 대체'),
+        L('jung@example.com', '연차', 15, 15, 'lead@example.com'),
+        L('park@example.com', '병가', -1, -1, 'lee@example.com'),
+        L('lee@example.com', '연수/교육', 22, 22, 'choi@example.com', '외부 교육'),
+        L('choi@example.com', '연차', 27, 29, 'park@example.com'),
+        L('han@example.com', '연차', 9, 9, 'jung@example.com', '이사'),
+      ],
+      holidays,
+      events: [
+        { id: 'E1', title: '정기 배포', startDate: rel(5), endDate: rel(5), time: '22:00~', memo: '배포 당일 개발·QA 휴가 자제' },
+        { id: 'E2', title: '전담반 워크숍', startDate: rel(16), endDate: rel(17), time: '', memo: '전원 참석' },
+      ],
+    };
+  };
+  let db;
+  try { db = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { db = null; }
+  if (!db) db = seed();
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} };
+  const need = (cond, msg) => { if (!cond) throw new Error(msg); };
+  const nameOf = (e) => (db.users.find((u) => u.email === e) || { name: e }).name;
+  const tokenOf = (u) => 'mock.' + u.email + '.' + u.password;
+  const auth = (token, quiet) => {
+    const u = db.users.find((x) => tokenOf(x) === token);
+    if (!u && !quiet) throw new Error('AUTH:로그인이 만료되었습니다. 다시 로그인하세요.');
+    return u || null;
+  };
+  const admin = (token) => { const u = auth(token); need(u.role === 'pm', 'PM(관리자)만 사용할 수 있는 기능입니다.'); return u; };
+  const defs = (u) => (u.defaultSubs || []).filter((e) => db.users.some((x) => x.email === e));
+  const checkDefs = (subs, owner) => {
+    subs = [...new Set((subs || []).filter(Boolean))];
+    need(subs.length <= MAX_SUBS, `기본 대직자는 최대 ${MAX_SUBS}명까지 지정할 수 있습니다.`);
+    need(!subs.includes(owner), '본인을 대직자로 지정할 수 없습니다.');
+    return subs;
+  };
+  const partOfU = (e) => (db.users.find((u) => u.email === e) || {}).part || '';
+  const conflictsOf = (l) => {
+    const out = [];
+    db.leaves.forEach((m) => {
+      if (m.id === l.id || !overlaps(l, m)) return;
+      const s = l.startDate > m.startDate ? l.startDate : m.startDate, e = l.endDate < m.endDate ? l.endDate : m.endDate;
+      const when = fmtRange({ startDate: s, endDate: e }) + (m.type === '오전반차' ? ' 오전' : m.type === '오후반차' ? ' 오후' : '');
+      if (l.substitutes.includes(m.email)) out.push(`대직자 ${nameOf(m.email)}님이 ${when} 부재`);
+      else if (m.substitutes.includes(l.email)) out.push(`${nameOf(m.email)}님이 나를 대직자로 지정했는데 ${when} 둘 다 부재`);
+    });
+    return out;
+  };
+  const state = (u) => {
+    const pm = u.role === 'pm';
+    const visible = (l) => pm || u.role === 'pl' || u.viewAll || l.email === u.email || (u.part && partOfU(l.email) === u.part);
+    return {
+      me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll },
+      users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll } : { email: x.email, name: x.name, part: x.part })),
+      leaves: db.leaves.filter(visible).map((l) => ({ ...l, conflicts: conflictsOf(l) })),
+      holidays: db.holidays,
+      events: db.events || [],
+      designatedBy: [...new Set(db.leaves.filter((l) => l.substitutes.includes(u.email) && l.endDate >= todayStr()).map((l) => nameOf(l.email)))].sort(),
+    };
+  };
+  const result = (u, extra) => { persist(); return { state: state(u), ...extra }; };
+  const normalize = (u, input, ex) => {
+    const email = u.role === 'pm' && input.email ? input.email : ex ? ex.email : u.email;
+    const l = { id: ex ? ex.id : input.id || '', email, type: input.type, startDate: input.startDate, endDate: input.endDate || input.startDate, substitutes: [...new Set((input.substitutes || []).filter(Boolean))] };
+    if (HALF[l.type]) l.endDate = l.startDate;
+    need(TYPES.includes(l.type), '일정 유형을 선택하세요.');
+    need(l.startDate && l.endDate >= l.startDate, '날짜를 확인하세요.');
+    return l;
+  };
+  const dupOf = (l) => db.leaves.find((x) => x.id !== l.id && x.email === l.email && overlaps(x, l));
+  const temp = () => Math.random().toString(36).slice(2, 10);
+  // 주의: Apps Script가 배포할 때 JS 주석을 지우면서 문자열 속 '//'도 주석으로 잘라낸다. 이 파일 JS 문자열에 '//'(URL 등)를 넣지 말 것
+  const PREVIEW_URL = '(웹앱 주소)';
+  return {
+    _db: () => db,
+    _tokenFor: (email) => { const u = db.users.find((x) => x.email === email); return u ? tokenOf(u) : ''; },
+    _reset() { db = seed(); persist(); },
+    _empty() { db.users = []; persist(); },
+    getBootstrap(token) {
+      if (!db.users.length) return { needsSetup: true };
+      const u = auth(token, true);
+      return u ? { state: state(u) } : { needLogin: true };
+    },
+    setupAdmin(i) {
+      need(!db.users.length, '이미 관리자가 등록되어 있습니다.');
+      need((i.password || '').length >= 8, '비밀번호는 8자 이상이어야 합니다.');
+      const u = { email: i.email.trim().toLowerCase(), name: i.name.trim(), role: 'pm', part: '', password: i.password, mustChange: false };
+      db.users.push(u); return result(u, { token: tokenOf(u) });
+    },
+    login(email, pw, remember) {
+      const u = db.users.find((x) => x.email === String(email).trim().toLowerCase());
+      need(u && u.password === pw, '이메일 또는 비밀번호가 올바르지 않습니다.');
+      return result(u, { token: tokenOf(u) });
+    },
+    changePassword(token, cur, next, remember) {
+      const u = auth(token);
+      need(u.password === cur, '현재 비밀번호가 올바르지 않습니다.');
+      need((next || '').length >= 8, '비밀번호는 8자 이상이어야 합니다.');
+      need(next !== cur, '새 비밀번호가 현재 비밀번호와 같습니다.');
+      Object.assign(u, { password: next, mustChange: false }); return result(u, { token: tokenOf(u) });
+    },
+    resetPassword(token, email) {
+      const a = admin(token); const u = db.users.find((x) => x.email === email);
+      need(u.email !== a.email, '본인 비밀번호는 [비밀번호 변경]에서 바꾸세요.');
+      const t = temp(); Object.assign(u, { password: t, mustChange: true }); return result(a, { tempPassword: t, email, appUrl: PREVIEW_URL });
+    },
+    checkLeave(token, input) {
+      const u = auth(token); const l = normalize(u, input, null); const d = dupOf(l);
+      return { duplicate: d ? `이미 ${fmtRange(d)} ${d.type} 일정이 있어 등록할 수 없습니다.` : '', warnings: l.substitutes.length ? conflictsOf(l) : [] };
+    },
+    saveLeave(token, input) {
+      const u = auth(token);
+      const ex = input.id ? db.leaves.find((l) => l.id === input.id) : null;
+      if (input.id) need(ex, '일정을 찾을 수 없습니다.');
+      if (ex) need(u.role === 'pm' || ex.email === u.email, '본인 일정만 수정할 수 있습니다.');
+      const l = normalize(u, input, ex);
+      need(l.substitutes.length, '대직자를 1명 이상 지정해야 합니다.');
+      need(l.substitutes.length <= MAX_SUBS, `대직자는 최대 ${MAX_SUBS}명까지 지정할 수 있습니다.`);
+      need(!l.substitutes.includes(l.email), '본인을 대직자로 지정할 수 없습니다.');
+      need(!dupOf(l), '이미 등록된 일정과 겹칩니다.');
+      const row = { ...l, memo: input.memo || '', updatedAt: new Date().toISOString() };
+      if (ex) Object.assign(ex, row); else db.leaves.push({ ...row, id: 'L' + Date.now() });
+      if (input.saveDefault) db.users.find((x) => x.email === l.email).defaultSubs = l.substitutes.slice();
+      return result(u);
+    },
+    deleteLeave(token, id) {
+      const u = auth(token); const ex = db.leaves.find((l) => l.id === id);
+      need(ex, '이미 삭제된 일정입니다.');
+      need(u.role === 'pm' || ex.email === u.email, '본인 일정만 삭제할 수 있습니다.');
+      db.leaves = db.leaves.filter((l) => l.id !== id); return result(u);
+    },
+    saveUser(token, i) {
+      const a = admin(token);
+      const email = (i.email || '').trim().toLowerCase();
+      need(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), '이메일 형식이 올바르지 않습니다.');
+      need((i.name || '').trim(), '이름을 입력하세요.');
+      const ex = db.users.find((x) => x.email === email);
+      need(!(i.isNew && ex), '이미 등록된 이메일입니다.');
+      const part = PARTS.includes(i.part) ? i.part : '';
+      need(i.role === 'pm' || part, 'PL과 파트원은 파트를 지정해야 합니다.');
+      need(!(ex && ex.role === 'pm' && i.role !== 'pm' && db.users.filter((x) => x.role === 'pm').length <= 1), 'PM(관리자)은 최소 1명 이상 있어야 합니다.');
+      const defaultSubs = checkDefs(i.defaultSubs, email);
+      const viewAll = i.role === 'member' && !!i.viewAll;
+      if (ex) { Object.assign(ex, { name: i.name.trim(), role: i.role, part, defaultSubs, viewAll }); return result(a, { email }); }
+      const t = temp(); db.users.push({ email, name: i.name.trim(), role: i.role, part, defaultSubs, viewAll, password: t, mustChange: true });
+      return result(a, { tempPassword: t, email, appUrl: PREVIEW_URL });
+    },
+    setMyDefaultSubs(token, subs) {
+      const u = auth(token); u.defaultSubs = checkDefs(subs, u.email); return result(u);
+    },
+    bulkAddUsers(token, rows) {
+      const a = admin(token); need(rows && rows.length, '등록할 직원이 없습니다.');
+      const created = [], errors = [];
+      rows.forEach((r, i) => {
+        try {
+          const email = String(r.email || '').trim().toLowerCase();
+          need(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), '이메일 형식이 올바르지 않습니다.');
+          need(String(r.name || '').trim(), '이름을 입력하세요.');
+          const role = roleOfText(r.role), part = PARTS.includes(String(r.part || '').trim()) ? String(r.part).trim() : '';
+          need(role === 'pm' || part, `파트를 확인하세요 (${PARTS.join('/')})`);
+          need(!db.users.some((u) => u.email === email), '이미 등록된 이메일입니다.');
+          const t = temp(); db.users.push({ email, name: r.name.trim(), role, part, password: t, mustChange: true });
+          created.push({ email, name: r.name.trim(), part, role, tempPassword: t });
+        } catch (e) { errors.push({ line: i + 1, email: String(r.email || ''), message: e.message }); }
+      });
+      return result(a, { created, errors, appUrl: PREVIEW_URL });
+    },
+    deleteUser(token, email) {
+      const a = admin(token); need(email !== a.email, '본인 계정은 삭제할 수 없습니다.');
+      db.users = db.users.filter((u) => u.email !== email); return result(a);
+    },
+    saveEvent(token, e) {
+      const a = admin(token);
+      need((e.title || '').trim(), '제목을 입력하세요.');
+      need(e.startDate && (e.endDate || e.startDate) >= e.startDate, '날짜를 확인하세요.');
+      const row = { id: e.id || 'E' + Date.now(), title: e.title.trim(), startDate: e.startDate, endDate: e.endDate || e.startDate, time: e.time || '', memo: e.memo || '' };
+      db.events = (db.events || []).filter((x) => x.id !== row.id).concat([row]); return result(a);
+    },
+    deleteEvent(token, id) {
+      const a = admin(token); db.events = (db.events || []).filter((x) => x.id !== id); return result(a);
+    },
+    saveHoliday(token, h) {
+      const a = admin(token); need(h.date && (h.name || '').trim(), '날짜와 이름을 입력하세요.');
+      db.holidays = db.holidays.filter((x) => x.date !== h.date).concat([{ date: h.date, name: h.name.trim() }]); return result(a);
+    },
+    deleteHoliday(token, date) {
+      const a = admin(token); db.holidays = db.holidays.filter((x) => x.date !== date); return result(a);
+    },
+  };
+})();
+
+/* =========================================================
+   상태
+   ========================================================= */
+let S = null;       // { me, users, leaves, holidays } — 서버가 권한에 맞는 일정만 내려줌 (PM 전체 / PL 파트 / 파트원 본인)
+let screen = 'loading'; // loading | setup | login | app | error
+let screenMsg = '';
+const ui = {
+  tab: 'cal',
+  month: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); })(),
+  mineOnly: false,
+  part: '', // PM 파트 필터
+  allFilter: { member: '', month: '', warnOnly: false },
+  holYear: new Date().getFullYear(),
+};
+let D = {}; // 파생 데이터
+
+const isAdmin = () => S && S.me.role === 'pm';
+const isPL = () => S && S.me.role === 'pl';
+const canSeeAll = () => isAdmin() || isPL() || !!(S && S.me.viewAll); // 전체 일정 조회 (PM·PL·'전체 일정 조회' 옵션)
+const canSeeTeam = () => canSeeAll() || !!(S && S.me.part); // 다른 사람 일정도 받는 권한 (파트원은 같은 파트)
+const roleLabel = (u) => (u.role === 'pm' ? 'PM' : u.role === 'pl' ? `${u.part} PL` : `${u.part || ''} 파트원`.trim())
+  + (u.viewAll && u.role === 'member' ? ' · 전체조회' : '');
+const nameOf = (email) => { const u = S.users.find((x) => x.email === email); return u ? u.name : email; };
+const partOf = (email) => (S.users.find((x) => x.email === email) || {}).part || '';
+/** 전체 조회 권한자가 파트 필터를 고르면 그 파트 일정만 */
+const scoped = () => (canSeeAll() && ui.part ? S.leaves.filter((l) => partOf(l.email) === ui.part) : S.leaves);
+const canEdit = (l) => isAdmin() || l.email === S.me.email;
+const conflictsOf = (l) => l.conflicts || [];
+
+function derive() {
+  const holidays = {};
+  (S.holidays || []).forEach((h) => (holidays[h.date] = h.name));
+  const isOff = (ds, d) => d.getDay() === 0 || d.getDay() === 6 || !!holidays[ds];
+  D = { holidays, isOff };
+}
+
+function workdays(l) {
+  let n = 0;
+  eachDate(l.startDate, l.endDate, (ds, d) => { if (!D.isOff(ds, d)) n++; });
+  return HALF[l.type] ? n * 0.5 : n;
+}
+
+/** 해당 날짜의 중요 일정 (PM이 등록, 전 직원 공개) */
+const eventsOn = (ds) => (S.events || []).filter((e) => e.startDate <= ds && ds <= e.endDate)
+  .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.title.localeCompare(b.title));
+const evtWhen = (e) => fmtRange(e) + (e.time ? ' ' + e.time : '');
+
+/** 해당 날짜에 표시할 일정 (여러 날 일정은 주말·공휴일엔 표시하지 않음) */
+function leavesOn(ds) {
+  const d = parse(ds);
+  return scoped().filter((l) => l.startDate <= ds && ds <= l.endDate && (l.startDate === l.endDate || !D.isOff(ds, d)));
+}
+
+/* =========================================================
+   렌더링
+   ========================================================= */
+const $app = document.getElementById('app');
+
+function render() {
+  const bar = previewBar();
+  if (screen === 'loading') { $app.innerHTML = bar + '<div class="loading"><div class="spinner"></div></div>'; return; }
+  if (screen === 'error') { $app.innerHTML = bar + `<div class="card center-page"><h2 style="margin-top:0">접속 오류</h2><p class="muted">${esc(screenMsg)}</p><button class="btn" data-act="reload">다시 시도</button></div>`; return; }
+  if (screen === 'setup') { $app.innerHTML = bar + viewSetup(); return; }
+  if (screen === 'login') { $app.innerHTML = bar + viewLogin(); return; }
+  if (S.me.mustChange) { $app.innerHTML = bar + viewForceChange(); return; }
+
+  derive();
+  const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['mine', '내 일정']];
+  if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일']);
+  else if (canSeeAll()) tabs.push(['all', '전체 일정']);
+  else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
+  if (!tabs.some((t) => t[0] === ui.tab)) ui.tab = 'cal';
+
+  $app.innerHTML = bar + `
+    <header class="top"><div class="top-inner">
+      <div class="brand">
+        <h1>슈퍼쏠 전담반 일정</h1>
+        <button class="whoami btn ghost sm" data-act="account">${esc(S.me.name)} <span class="badge ${canSeeTeam() ? 'admin' : ''}">${esc(roleLabel(S.me))}</span> ▾</button>
+      </div>
+      <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}</button>`).join('')}</nav>
+    </div></header>
+    <main>${({ cal: viewCalendar, events: viewEvents, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays })[ui.tab]()}</main>`;
+}
+
+function previewBar() {
+  if (MODE !== 'mock') return '';
+  const db = Mock._db();
+  const cur = db.users.find((u) => Mock._tokenFor(u.email) === getToken());
+  const v = !db.users.length ? '__setup' : cur ? cur.email : '__logout';
+  return `<div class="preview-bar">
+    <b>미리보기 (샘플 데이터 · 비밀번호 test1234)</b>
+    <span>이 사람으로 보기:</span>
+    <select data-act="switch">${db.users.map((u) => `<option value="${esc(u.email)}" ${u.email === v ? 'selected' : ''}>${esc(u.name)} (${esc(roleLabel(u))})</option>`).join('')}
+      <option value="__logout" ${v === '__logout' ? 'selected' : ''}>로그아웃 상태</option>
+      <option value="__setup" ${v === '__setup' ? 'selected' : ''}>최초 설정 (팀원 0명)</option></select>
+    <button data-act="reset">샘플 초기화</button>
+  </div>`;
+}
+
+/* ---------- 로그인 / 최초 설정 / 비밀번호 변경 ---------- */
+function viewLogin() {
+  return `<form class="card center-page auth" data-form="login">
+    <h2>슈퍼쏠 전담반 일정</h2>
+    <p class="muted small">관리자에게 받은 이메일과 비밀번호로 로그인하세요.</p>
+    <div class="field"><label>이메일</label><input name="email" type="email" autocomplete="username" required></div>
+    <div class="field"><label>비밀번호</label><input name="password" type="password" autocomplete="current-password" required></div>
+    <label class="toggle remember"><input type="checkbox" name="remember" checked>
+      <span><b>이 기기에서 로그인 유지</b> <span class="muted small">(180일)</span><br><span class="muted small">${MODE === 'gas'
+        ? '휴대폰 홈 화면에 추가해서 쓸 때 켜두세요. 켜면 주소창 주소에 로그인 정보가 붙습니다. <b>그 주소는 다른 사람에게 보내지 마세요.</b> 공용 PC에서는 끄세요.'
+        : '공용 PC에서는 끄세요. 끄면 브라우저를 닫을 때 로그아웃됩니다.'}</span></span></label>
+    <button class="btn primary block" type="submit">로그인</button>
+    <p class="muted small">비밀번호를 잊었으면 관리자에게 초기화를 요청하세요.</p>
+  </form>`;
+}
+
+function viewSetup() {
+  return `<form class="card center-page auth" data-form="setup">
+    <h2>최초 관리자 설정</h2>
+    <p class="muted small">아직 등록된 팀원이 없습니다. 관리자 계정을 만드세요. 이 화면은 처음 한 번만 나옵니다.</p>
+    <div class="field"><label>이메일 (로그인 ID)</label><input name="email" type="email" autocomplete="username" required></div>
+    <div class="field"><label>이름</label><input name="name" required></div>
+    <div class="field"><label>비밀번호 (8자 이상)</label><input name="password" type="password" autocomplete="new-password" minlength="8" required></div>
+    <button class="btn primary block" type="submit">관리자로 시작하기</button>
+  </form>`;
+}
+
+function passwordFields() {
+  return `<div class="field"><label>현재 비밀번호</label><input name="current" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label>새 비밀번호 (8자 이상)</label><input name="next" type="password" autocomplete="new-password" minlength="8" required></div>
+    <div class="field"><label>새 비밀번호 확인</label><input name="next2" type="password" autocomplete="new-password" minlength="8" required></div>`;
+}
+
+function viewForceChange() {
+  return `<form class="card center-page auth" data-form="password">
+    <h2>비밀번호 변경</h2>
+    <p class="muted small">${esc(S.me.name)}님, 임시 비밀번호로 로그인했습니다. 사용할 비밀번호로 바꿔주세요.</p>
+    ${passwordFields()}
+    <button class="btn primary block" type="submit">변경하고 시작하기</button>
+    <button class="btn ghost block" type="button" data-act="logout">로그아웃</button>
+  </form>`;
+}
+
+/* ---------- 캘린더 ---------- */
+function viewCalendar() {
+  const today = todayStr();
+  const tDate = parse(today);
+  const me = S.me.email;
+  const year = today.slice(0, 4);
+  let stats;
+
+  if (canSeeTeam()) {
+    const scope = !canSeeAll() ? '파트 ' : ui.part ? ui.part + ' ' : '';
+    const todays = D.isOff(today, tDate) ? [] : leavesOn(today);
+    const mon = addDays(tDate, -((tDate.getDay() + 6) % 7));
+    const weekPeople = new Set();
+    for (let i = 0; i < 5; i++) { const ds = ymd(addDays(mon, i)); if (!D.isOff(ds, parse(ds))) leavesOn(ds).forEach((l) => weekPeople.add(l.email)); }
+    const warn = scoped().filter((l) => l.endDate >= today && conflictsOf(l).length);
+    stats = [
+      [`오늘 ${scope}부재`, `${todays.length}명`, todays.length ? todays.map((l) => `${esc(nameOf(l.email))} ${SHORT[l.type]}`).join(', ') : '전원 근무'],
+      [`이번 주 ${scope}부재`, `${weekPeople.size}명`, [...weekPeople].map((e) => esc(nameOf(e))).join(', ') || '-'],
+      [`${scope}대직 겹침 경고`, `${warn.length}건`, warn.length ? '확인 필요 ⚠' : '문제 없음', warn.length, warn.length ? 'all-warn' : ''],
+    ];
+  } else {
+    const mine = S.leaves.filter((l) => l.email === me);
+    const next = mine.filter((l) => l.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+    const used = mine.filter((l) => l.startDate.startsWith(year) && (l.type === '연차' || HALF[l.type])).reduce((s, l) => s + workdays(l), 0);
+    const warn = mine.filter((l) => l.endDate >= today && conflictsOf(l).length);
+    stats = [
+      ['다음 내 일정', next ? fmtShort(next.startDate) : '-', next ? next.type : '예정 없음'],
+      [`${year}년 연차 사용`, `${used}일`, '반차 0.5일 · 주말·공휴일 제외'],
+      ['대직자 겹침', `${warn.length}건`, warn.length ? '확인 필요 ⚠' : '문제 없음', warn.length, warn.length ? 'mine' : ''],
+    ];
+  }
+  const statsHtml = `<div class="stats">${stats.map(([label, value, sub, warn, go]) => `
+    <div class="card stat ${warn ? 'warn' : ''}" ${go ? `data-act="tab" data-v="${go}" style="cursor:pointer"` : ''}>
+      <div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`).join('')}</div>`;
+
+  // 달력
+  const first = ui.month;
+  const start = addDays(first, -first.getDay());
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
+  const maxChips = window.matchMedia('(max-width: 640px)').matches ? 3 : 4;
+  let cells = '';
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = addDays(start, i);
+    const ds = ymd(d);
+    let items = leavesOn(ds);
+    if (ui.mineOnly) items = items.filter((l) => l.email === me || l.substitutes.includes(me));
+    items.sort((a, b) => TYPES.indexOf(a.type) - TYPES.indexOf(b.type) || nameOf(a.email).localeCompare(nameOf(b.email)));
+    const cls = ['day', d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
+    const evs = eventsOn(ds);
+    const room = Math.max(maxChips - evs.length, 1);
+    const shown = items.slice(0, items.length > room ? room - 1 : room);
+    cells += `<div class="${cls}" data-act="day" data-v="${ds}">
+      <div class="dtop"><span class="dnum">${d.getDate()}</span>${D.holidays[ds] ? `<span class="hname">${esc(D.holidays[ds])}</span>` : ''}</div>
+      ${evs.map((e) => `<div class="chip evt" title="${esc(e.title)}${e.time ? ' ' + esc(e.time) : ''}"><span class="w">★</span><span class="nm">${esc(e.title)}</span></div>`).join('')}
+      ${shown.map((l) => {
+        const c = conflictsOf(l).length;
+        const cover = l.email !== me && l.substitutes.includes(me);
+        return `<div class="chip t-${l.type} ${c ? 'conflict' : ''} ${cover ? 'cover' : ''}" title="${esc(nameOf(l.email))} ${l.type}${cover ? ' (내가 대직)' : ''}${c ? ' — 대직 겹침' : ''}">${c ? '<span class="w">⚠</span>' : ''}${cover ? '<span class="w">↺</span>' : ''}<span class="nm">${esc(nameOf(l.email))}</span><span class="ty">${SHORT[l.type]}</span></div>`;
+      }).join('')}
+      ${items.length > shown.length ? `<div class="more">+${items.length - shown.length}</div>` : ''}
+    </div>`;
+  }
+
+  const upcoming = (S.events || []).filter((e) => e.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate)).slice(0, 3);
+  const upcomingHtml = upcoming.length ? `
+    <div class="evt-list">${upcoming.map((e) => `
+      <div class="card evt-item" data-act="day" data-v="${e.startDate < today ? today : e.startDate}" style="cursor:pointer">
+        <div class="when">★ ${esc(evtWhen(e))}</div><div class="what"><b>${esc(e.title)}</b>${e.memo ? `<span class="muted small">${esc(e.memo)}</span>` : ''}</div></div>`).join('')}
+      ${(S.events || []).filter((e) => e.endDate >= today).length > 3 ? '<button class="btn sm ghost" data-act="tab" data-v="events" style="align-self:flex-start">중요 일정 더 보기</button>' : ''}
+    </div>` : '';
+
+  return statsHtml + upcomingHtml + `
+    <div class="cal-toolbar">
+      <div class="month-nav">
+        <button class="icon-btn" data-act="month" data-v="-1" aria-label="이전 달">‹</button>
+        <h2>${first.getFullYear()}년 ${first.getMonth() + 1}월</h2>
+        <button class="icon-btn" data-act="month" data-v="1" aria-label="다음 달">›</button>
+        <button class="btn sm" data-act="month" data-v="0" style="margin-left:4px">오늘</button>
+      </div>
+      <div class="cal-actions">
+        ${canSeeAll() ? partSelect() : ''}
+        ${canSeeAll() ? `<button class="btn" data-act="copyAttendance" data-v="${today}">오늘 근태 복사</button>` : ''}
+        ${isAdmin() ? '<button class="btn" data-act="newEvent">+ 중요 일정</button>' : ''}
+        ${canSeeTeam() ? `<label class="toggle"><input type="checkbox" data-act="mineOnly" ${ui.mineOnly ? 'checked' : ''}> 나와 관련된 일정만</label>` : ''}
+        <button class="btn primary" data-act="newLeave">+ 일정 등록</button>
+      </div>
+    </div>
+    <div class="card cal">
+      <div class="cal-head">${WEEK.map((w) => `<div>${w}</div>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+    </div>
+    <div class="legend">
+      ${TYPES.map((t) => `<span><i class="dot t-${t}"></i>${t}</span>`).join('')}
+      <span><span style="color:var(--evt)">★</span> 중요 일정</span>
+      <span><span style="color:var(--danger)">⚠</span> 대직자와 일정 겹침</span>
+      ${canSeeTeam() ? '<span>↺ 내가 대직하는 일정</span>' : ''}
+      ${isAdmin() ? '' : canSeeAll() ? '<span>· 전체 직원 일정 (수정은 본인 일정만)</span>' : S.me.part ? `<span>· ${esc(S.me.part)} 파트 일정 (수정은 본인 일정만)</span>` : '<span>· 본인 일정만 표시됩니다</span>'}
+    </div>
+    ${isAdmin() ? '' : designatedBox()}`;
+}
+
+/** 나를 대직자로 지정한 사람 (이름만) — PM은 전체 일정을 보므로 표시 안 함 */
+function designatedBox() {
+  const names = S.designatedBy || [];
+  return `<div class="infobox designated"><b>나를 대직자로 지정한 사람</b>
+    ${names.length ? names.map((n) => `<span class="name-chip">${esc(n)}</span>`).join('') : '<span>없음</span>'}</div>`;
+}
+
+/** 아침 근태 보고용 문구 — 그날 부재자를 유형별로 묶는다 */
+function attendanceText(ds) {
+  const items = leavesOn(ds);
+  const title = `[${fmtShort(ds)}${ui.part ? ' ' + ui.part : ''} 근태 현황]`;
+  if (!items.length) return `${title}\n부재 없음 (전원 정상 근무)`;
+  const who = (l) => nameOf(l.email) + (partOf(l.email) && !ui.part ? `(${partOf(l.email)})` : '');
+  const lines = TYPES.map((t) => {
+    const ls = items.filter((l) => l.type === t).sort((a, b) => nameOf(a.email).localeCompare(nameOf(b.email)));
+    return ls.length ? `${t}: ${ls.map(who).join(', ')}` : '';
+  }).filter(Boolean);
+  return `${title}\n${lines.join('\n')}\n→ 부재 ${new Set(items.map((l) => l.email)).size}명`;
+}
+
+function partSelect() {
+  return `<select class="part-select" data-act="part"><option value="">전체 파트</option>
+    ${PARTS.map((p) => `<option ${ui.part === p ? 'selected' : ''}>${p}</option>`).join('')}</select>`;
+}
+
+/* ---------- 일정 카드 ---------- */
+function leaveItem(l, opts = {}) {
+  const c = conflictsOf(l);
+  const past = l.endDate < todayStr();
+  return `<div class="card item ${past ? 'past' : ''}">
+    <div class="bar t-${l.type}"></div>
+    <div class="body">
+      <div class="title">${opts.showName ? esc(nameOf(l.email)) + ' · ' : ''}${l.type} <span class="muted small" style="font-weight:500">${fmtRange(l)} · ${workdays(l)}일</span>
+        ${c.length ? '<span class="badge" style="background:var(--danger-weak);color:var(--danger)">⚠ 대직 겹침</span>' : ''}</div>
+      <div class="meta">대직자 ${l.substitutes.map((e) => esc(nameOf(e))).join(', ')}${l.memo ? ' · ' + esc(l.memo) : ''}</div>
+      ${c.length ? `<div class="warnbox">${c.map((x) => `<div>⚠ ${esc(x)}</div>`).join('')}</div>` : ''}
+    </div>
+    ${canEdit(l) ? `<div class="actions">
+      <button class="btn sm" data-act="editLeave" data-v="${l.id}">수정</button>
+      <button class="btn sm danger" data-act="delLeave" data-v="${l.id}">삭제</button></div>` : ''}
+  </div>`;
+}
+
+/* ---------- 중요 일정 (등록·수정은 PM, 보기는 전체) ---------- */
+function evtItem(e) {
+  return `<div class="card evt-item ${e.endDate < todayStr() ? 'past' : ''}" style="${e.endDate < todayStr() ? 'opacity:.6' : ''}">
+    <div class="when">★ ${esc(evtWhen(e))}</div>
+    <div class="what"><b>${esc(e.title)}</b>${e.memo ? `<div class="muted small" style="white-space:pre-wrap">${esc(e.memo)}</div>` : ''}</div>
+    ${isAdmin() ? `<div class="actions" style="display:flex;gap:6px"><button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
+      <button class="btn sm danger" data-act="delEvent" data-v="${e.id}">삭제</button></div>` : ''}</div>`;
+}
+
+function viewEvents() {
+  const today = todayStr();
+  const list = (S.events || []).slice().sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const upcoming = list.filter((e) => e.endDate >= today);
+  const past = list.filter((e) => e.endDate < today).reverse();
+  return `
+    <div class="section-title" style="margin-top:4px"><span>다가오는 중요 일정</span>
+      ${isAdmin() ? '<button class="btn primary" data-act="newEvent">+ 중요 일정 등록</button>' : ''}</div>
+    ${isAdmin() ? '' : '<div class="infobox" style="margin:0 0 12px">PM이 등록한 전담반 중요 일정입니다. 휴가 계획에 참고하세요.</div>'}
+    <div class="evt-list" style="margin-top:0">${upcoming.length ? upcoming.map(evtItem).join('') : '<div class="card empty">예정된 중요 일정이 없습니다.</div>'}</div>
+    ${past.length ? `<div class="section-title">지난 중요 일정</div><div class="evt-list" style="margin-top:0">${past.slice(0, 30).map(evtItem).join('')}</div>` : ''}`;
+}
+
+function openEventForm(id, date) {
+  const ex = id ? (S.events || []).find((e) => e.id === id) : null;
+  const d0 = date || todayStr();
+  const m = openModal(`
+    <header><h3>${ex ? '중요 일정 수정' : '중요 일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="field"><label>제목 <span class="req">*</span></label><input name="title" maxlength="50" value="${ex ? esc(ex.title) : ''}" placeholder="예: 정기 배포, 전담반 워크숍"></div>
+      <div class="row2">
+        <div class="field"><label>시작일 <span class="req">*</span></label><input type="date" name="startDate" value="${ex ? ex.startDate : d0}"></div>
+        <div class="field"><label>종료일</label><input type="date" name="endDate" value="${ex ? ex.endDate : d0}"></div>
+      </div>
+      <div class="field"><label>시간 <span class="muted" style="font-weight:400">선택</span></label><input name="time" maxlength="30" value="${ex ? esc(ex.time) : ''}" placeholder="예: 14:00~16:00"></div>
+      <div class="field"><label>내용 <span class="muted" style="font-weight:400">선택</span></label><textarea name="memo" rows="3" maxlength="300" placeholder="장소, 참석 대상 등">${ex ? esc(ex.memo) : ''}</textarea></div>
+      <p class="muted small">등록하면 모든 직원의 캘린더에 ★로 표시됩니다.</p>
+    </div>
+    <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span>
+      <button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '등록'}</button></footer>`);
+  const v = (n) => m.querySelector(`[name=${n}]`).value;
+  const sd = m.querySelector('[name=startDate]'), ed = m.querySelector('[name=endDate]');
+  sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; };
+  if (ex) m.querySelector('[data-del]').onclick = () => removeEvent(ex.id);
+  m.querySelector('[data-save]').onclick = () => run(api('saveEvent', {
+    id: ex ? ex.id : '', title: v('title'), startDate: v('startDate'), endDate: v('endDate') || v('startDate'), time: v('time'), memo: v('memo'),
+  }), ex ? '수정했습니다.' : '중요 일정을 등록했습니다.');
+}
+
+async function removeEvent(id) {
+  const e = (S.events || []).find((x) => x.id === id);
+  if (!e) return;
+  const ok = await confirmBox('중요 일정 삭제', `<p>${esc(evtWhen(e))} ${esc(e.title)}<br>삭제할까요? 모든 직원의 캘린더에서 사라집니다.</p>`, '삭제', true);
+  if (ok) run(api('deleteEvent', id), '삭제했습니다.');
+}
+
+/* ---------- 내 일정 ---------- */
+function viewMine() {
+  const me = S.me.email, today = todayStr(), year = today.slice(0, 4);
+  const mine = S.leaves.filter((l) => l.email === me).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const upcoming = mine.filter((l) => l.endDate >= today);
+  const past = mine.filter((l) => l.endDate < today).reverse();
+  const covering = S.leaves.filter((l) => l.substitutes.includes(me) && l.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const used = mine.filter((l) => l.startDate.startsWith(year) && (l.type === '연차' || HALF[l.type])).reduce((s, l) => s + workdays(l), 0);
+
+  return `
+    <div class="section-title" style="margin-top:4px">
+      <span>예정된 내 일정 <span class="muted small">· ${year}년 연차 사용 ${used}일</span></span>
+      <button class="btn primary" data-act="newLeave">+ 일정 등록</button>
+    </div>
+    <div class="list">${upcoming.length ? upcoming.map((l) => leaveItem(l)).join('') : '<div class="card empty">예정된 일정이 없습니다.</div>'}</div>
+    ${isAdmin() ? '' : designatedBox()}
+    ${canSeeTeam() ? `<div class="section-title">내가 대직하는 일정${canSeeAll() ? '' : ' <span class="muted small">(우리 파트)</span>'}</div>
+    <div class="list">${covering.length ? covering.map((l) => leaveItem(l, { showName: true })).join('') : '<div class="card empty">대직 예정이 없습니다.</div>'}</div>` : ''}
+    ${past.length ? `<div class="section-title">지난 일정</div><div class="list">${past.map((l) => leaveItem(l)).join('')}</div>` : ''}`;
+}
+
+/* ---------- 전체 일정 (PM·PL·전체 조회) / 파트 일정 (파트원) ---------- */
+function viewAll() {
+  const f = ui.allFilter, today = todayStr(), year = today.slice(0, 4);
+  const part = canSeeAll() ? ui.part : S.me.part;
+  // 휴가 사용 현황(개수)은 PM 전체, PL은 자기 파트만. 전체 조회 옵션만 있는 사람은 볼 수 없음
+  const usagePart = isAdmin() ? part : isPL() ? S.me.part : null;
+  const usagePeople = usagePart === null ? [] : S.users.filter((u) => !usagePart || u.part === usagePart);
+  const people = S.users.filter((u) => !part || u.part === part);
+  let list = scoped().slice();
+  if (f.member) list = list.filter((l) => l.email === f.member);
+  if (f.month) list = list.filter((l) => l.startDate.slice(0, 7) <= f.month && f.month <= l.endDate.slice(0, 7));
+  else list = list.filter((l) => l.endDate >= today);
+  if (f.warnOnly) list = list.filter((l) => conflictsOf(l).length);
+  list.sort((a, b) => a.startDate.localeCompare(b.startDate) || nameOf(a.email).localeCompare(nameOf(b.email)));
+
+  const rows = usagePeople.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => {
+    const ls = S.leaves.filter((l) => l.email === u.email && l.startDate.startsWith(year));
+    const sum = (pred) => ls.filter(pred).reduce((s, l) => s + workdays(l), 0);
+    return `<tr><td>${esc(u.name)}${isAdmin() && u.part ? ` <span class="muted small">${esc(u.part)}</span>` : ''}</td>
+      <td class="num">${sum((l) => l.type === '연차')}</td>
+      <td class="num">${sum((l) => HALF[l.type])}</td>
+      <td class="num"><b>${sum((l) => l.type === '연차' || HALF[l.type])}</b></td>
+      <td class="num">${sum((l) => l.type === '병가')}</td>
+      <td class="num">${sum((l) => l.type === '연수/교육')}</td>
+      <td class="num">${sum((l) => l.type === '기타')}</td></tr>`;
+  }).join('');
+
+  return `
+    <div class="filters">
+      ${canSeeAll() ? partSelect() : ''}
+      <select data-act="filter" data-k="member"><option value="">${part ? esc(part) + ' 전체' : '전체 팀원'}</option>
+        ${people.map((u) => `<option value="${esc(u.email)}" ${f.member === u.email ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>
+      <input type="month" data-act="filter" data-k="month" value="${f.month}">
+      ${f.month ? '<button class="btn sm ghost" data-act="clearMonth">예정 일정 보기</button>' : '<span class="muted small">예정된 일정 표시 중</span>'}
+      <label class="toggle"><input type="checkbox" data-act="filter" data-k="warnOnly" ${f.warnOnly ? 'checked' : ''}> 겹침 경고만</label>
+      <span style="flex:1"></span>
+      ${isAdmin() ? '<button class="btn primary" data-act="newLeave">+ 대리 등록</button>' : ''}
+    </div>
+    ${isAdmin() ? '' : `<div class="infobox" style="margin:0 0 12px">${canSeeAll() ? '전체 직원' : esc(part) + ' 파트원'}의 일정을 볼 수 있습니다. 수정·삭제는 본인 또는 PM만 할 수 있습니다.</div>`}
+    <div class="list">${list.length ? list.map((l) => leaveItem(l, { showName: true })).join('') : '<div class="card empty">해당하는 일정이 없습니다.</div>'}</div>
+    ${usagePart === null ? '' : `<div class="section-title">${year}년 ${usagePart ? esc(usagePart) + ' 파트' : '팀원별'} 사용 현황 <span class="muted small">(주말·공휴일 제외 일수)</span></div>
+    <div class="card table-wrap"><table>
+      <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`}`;
+}
+
+/* ---------- 팀원 관리 (관리자) ---------- */
+function viewMembers() {
+  const byName = (a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'pl' ? -1 : 1);
+  const groups = [['PM (관리자)', S.users.filter((u) => u.role === 'pm')]]
+    .concat(PARTS.map((p) => [`${p} 파트`, S.users.filter((u) => u.role !== 'pm' && u.part === p).sort(byName)]))
+    .concat([['파트 미지정', S.users.filter((u) => u.role !== 'pm' && !PARTS.includes(u.part))]])
+    .filter(([, list]) => list.length);
+  const row = (u) => `
+      <div class="card item"><div class="body">
+        <div class="title">${esc(u.name)} <span class="badge ${u.role !== 'member' ? 'admin' : ''}">${esc(roleLabel(u))}</span>${u.email === S.me.email ? '<span class="muted small">(나)</span>' : ''}</div>
+        <div class="meta">${esc(u.email)}${u.defaultSubs && u.defaultSubs.length ? ` · 기본 대직자 ${u.defaultSubs.map((e) => esc(nameOf(e))).join(', ')}` : ''}</div></div>
+        <div class="actions"><button class="btn sm" data-act="editUser" data-v="${esc(u.email)}">수정</button>
+        ${u.email !== S.me.email ? `<button class="btn sm" data-act="resetPw" data-v="${esc(u.email)}">비밀번호 초기화</button>
+          <button class="btn sm danger" data-act="delUser" data-v="${esc(u.email)}">삭제</button>` : ''}</div>
+      </div>`;
+  return `
+    <div class="section-title" style="margin-top:4px"><span>팀원 ${S.users.length}명</span>
+      <span style="display:flex;gap:6px"><button class="btn" data-act="bulkUsers">일괄 등록</button>
+      <button class="btn primary" data-act="newUser">+ 팀원 추가</button></span></div>
+    <div class="infobox" style="margin:0 0 4px">팀원을 추가하면 <b>임시 비밀번호</b>가 발급됩니다. 사이트 주소·이메일·임시 비밀번호를 전달하면 첫 로그인 때 본인 비밀번호로 바꾸게 됩니다.<br>
+      <b>PM</b> 전체 일정·관리 메뉴 &nbsp;·&nbsp; <b>PL</b> 전체 직원 일정 조회 &nbsp;·&nbsp; <b>파트원</b> 같은 파트 일정 조회 &nbsp;(PL·파트원은 본인 일정만 수정)</div>
+    ${groups.map(([title, list]) => `<div class="section-title">${esc(title)} <span class="muted small">${list.length}명</span></div><div class="list">${list.map(row).join('')}</div>`).join('')}`;
+}
+
+/* ---------- 공휴일 (관리자) ---------- */
+function viewHolidays() {
+  const y = String(ui.holYear);
+  const list = S.holidays.filter((h) => h.date.startsWith(y)).sort((a, b) => a.date.localeCompare(b.date));
+  return `
+    <div class="section-title" style="margin-top:4px">
+      <div class="month-nav"><button class="icon-btn" data-act="holYear" data-v="-1">‹</button><h2>${y}년 공휴일</h2><button class="icon-btn" data-act="holYear" data-v="1">›</button></div>
+      <button class="btn primary" data-act="newHoliday">+ 공휴일 추가</button></div>
+    <div class="infobox" style="margin:0 0 12px">공휴일은 캘린더에 빨간색으로 표시되고 휴가 사용일수 계산에서 제외됩니다. 임시공휴일·대체공휴일은 여기서 추가하세요.</div>
+    <div class="card table-wrap"><table><tbody>
+      ${list.length ? list.map((h) => `<tr><td>${fmtShort(h.date)}</td><td style="width:100%">${esc(h.name)}</td>
+        <td><button class="btn sm danger" data-act="delHoliday" data-v="${h.date}">삭제</button></td></tr>`).join('') : '<tr><td class="empty">등록된 공휴일이 없습니다.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+/* =========================================================
+   모달
+   ========================================================= */
+let $modal = null, onDismiss = null;
+function openModal(html, dismiss) {
+  closeModal();
+  $modal = document.createElement('div');
+  $modal.className = 'overlay';
+  $modal.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+  $modal.addEventListener('mousedown', (e) => { if (e.target === $modal) dismissModal(); });
+  document.body.appendChild($modal);
+  onDismiss = dismiss || null;
+  $modal.querySelectorAll('[data-close]').forEach((b) => (b.onclick = dismissModal));
+  return $modal;
+}
+function closeModal() { if ($modal) { $modal.remove(); $modal = null; } onDismiss = null; }
+/** 바깥 클릭 / ESC / 닫기 — 확인창이면 '취소'로 처리 */
+function dismissModal() { const cb = onDismiss; closeModal(); if (cb) cb(); }
+
+function confirmBox(title, body, okLabel = '확인', danger = false) {
+  return new Promise((resolve) => {
+    const m = openModal(`<header><h3>${esc(title)}</h3></header><div class="content">${body}</div>
+      <footer><button class="btn" data-r="0">취소</button><button class="btn ${danger ? 'danger' : 'primary'}" data-r="1">${esc(okLabel)}</button></footer>`, () => resolve(false));
+    m.querySelectorAll('[data-r]').forEach((b) => b.addEventListener('click', () => { closeModal(); resolve(b.dataset.r === '1'); }));
+  });
+}
+
+/** 직원에게 보낼 안내 메시지 — 신규 등록(isNew) 또는 비밀번호 초기화 */
+function inviteMessage(res, isNew) {
+  const url = MODE === 'api' ? location.origin + location.pathname : res.appUrl || '(웹앱 주소)';
+  const name = nameOf(res.email);
+  return isNew
+    ? `[슈퍼쏠 전담반 일정관리] 계정 안내
+
+${name}님, 일정관리 사이트 계정이 만들어졌습니다.
+
+접속 주소: ${url}
+로그인 이메일: ${res.email}
+임시 비밀번호: ${res.tempPassword}
+
+1. 위 주소로 접속해서 로그인해 주세요. (구글 로그인 필요 없음)
+2. 처음 로그인하면 사용할 비밀번호로 바꾸게 됩니다. (8자 이상)
+3. 휴가·반차를 등록할 때 대직자를 꼭 지정해 주세요.
+4. 폰에서는 '홈 화면에 추가'하면 앱처럼 쓸 수 있어요.`
+    : `[슈퍼쏠 전담반 일정관리] 비밀번호 초기화 안내
+
+${name}님, 비밀번호가 초기화되었습니다.
+
+접속 주소: ${url}
+로그인 이메일: ${res.email}
+임시 비밀번호: ${res.tempPassword}
+
+로그인하면 사용할 비밀번호로 바꾸게 됩니다. (8자 이상)`;
+}
+
+function showTempPassword(res, title, isNew) {
+  const m = openModal(`<header><h3>${esc(title)}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <p class="small">아래 메시지를 복사해서 ${esc(nameOf(res.email))}님에게 메신저로 보내세요.<br>
+        <b>이 창을 닫으면 임시 비밀번호를 다시 볼 수 없습니다.</b></p>
+      <div class="field" style="margin-top:8px"><textarea class="msg-box" rows="${isNew ? 13 : 9}" spellcheck="false">${esc(inviteMessage(res, isNew))}</textarea></div>
+      <div class="copy-row">
+        <button class="btn primary" data-copy="all">메시지 복사</button>
+        <button class="btn" data-copy="pw">임시 비밀번호만 복사</button>
+      </div>
+      <p class="muted small">비밀번호를 따로 보내고 싶으면 메시지에서 비밀번호 줄을 지우고 복사한 뒤, 비밀번호만 한 번 더 보내세요.</p>
+    </div>
+    <footer><button class="btn" data-close>닫기</button></footer>`);
+  const ta = m.querySelector('.msg-box');
+  m.querySelector('[data-copy=all]').onclick = () => copyText(ta.value, ta);
+  m.querySelector('[data-copy=pw]').onclick = () => copyText(res.tempPassword);
+}
+
+/** 클립보드 복사 — 막혀 있으면 execCommand, 그것도 안 되면 선택만 해두고 안내 */
+async function copyText(text, ta) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {}
+  if (!ok) {
+    const t = ta || Object.assign(document.createElement('textarea'), { value: text });
+    if (!ta) { t.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(t); }
+    t.focus(); t.select();
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    if (!ta) t.remove();
+  }
+  toast(ok ? '복사했습니다. 메신저에 붙여넣으세요.' : '자동 복사가 안 됩니다. 글을 길게 눌러 직접 복사하세요.', !ok);
+}
+
+/* ---------- 계정 메뉴 ---------- */
+function openAccount() {
+  const subs = (S.me.defaultSubs || []).slice();
+  if (!subs.length) subs.push('');
+  const m = openModal(`<header><h3>${esc(S.me.name)} <span class="muted small">${esc(S.me.email)}</span></h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      ${urlToken ? `<div class="infobox" style="margin:0 0 8px">이 기기에서 <b>로그인 유지 중</b>입니다. 지금 주소창 주소에 로그인 정보가 들어 있으니 <b>다른 사람에게 보내지 마세요.</b>
+        직원에게 사이트를 알려줄 때는 팀원 관리의 안내 메시지 주소를 쓰세요.</div>` : ''}
+      <div class="field" style="margin-top:0"><label>기본 대직자 <span class="muted" style="font-weight:400">휴가 등록할 때 자동으로 채워집니다 (최대 ${MAX_SUBS}명)</span></label><div data-defsubs></div></div>
+      <div style="display:flex;justify-content:flex-end"><button class="btn sm primary" data-savesubs>기본 대직자 저장</button></div>
+    </div>
+    <form class="content" data-form="password" style="border-top:1px solid var(--border);padding-top:4px">${passwordFields()}
+      <div style="display:flex;gap:8px;margin-top:16px"><button class="btn" type="button" data-act="logout">로그아웃</button><span style="flex:1"></span>
+      <button class="btn primary" type="submit">비밀번호 변경</button></div></form>`);
+  renderSubPicker(m.querySelector('[data-defsubs]'), S.me.email, subs, null, true);
+  m.querySelector('[data-savesubs]').onclick = () => run(api('setMyDefaultSubs', subs.filter(Boolean)), '기본 대직자를 저장했습니다.');
+  return m;
+}
+
+/* ---------- 날짜 상세 ---------- */
+function openDay(ds) {
+  const items = leavesOn(ds);
+  const evs = eventsOn(ds);
+  const d = parse(ds);
+  openModal(`<header><h3>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]})${D.holidays[ds] ? ` <span class="badge" style="color:var(--sun)">${esc(D.holidays[ds])}</span>` : ''}</h3>
+      <button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      ${evs.length ? `<div class="evt-list" style="margin:0 0 12px">${evs.map(evtItem).join('')}</div>` : ''}
+      <div class="list">${items.length ? items.map((l) => leaveItem(l, { showName: true })).join('') : `<div class="empty">${canSeeTeam() ? '부재 인원이 없습니다.' : '내 일정이 없습니다.'}</div>`}</div></div>
+    <footer>${canSeeAll() ? `<button class="btn" data-act="copyAttendance" data-v="${ds}">근태 복사</button>` : ''}
+      ${isAdmin() ? `<button class="btn" data-act="newEvent" data-v="${ds}">+ 중요 일정</button>` : ''}<span class="spacer"></span>
+      <button class="btn primary" data-new>+ 이 날 일정 등록</button></footer>`);
+  $modal.querySelector('[data-new]').onclick = () => openLeaveForm(null, ds);
+}
+
+/* ---------- 대직자 선택칸 (휴가 등록 · 기본 대직자 설정에서 공용) ---------- */
+/** subs 배열(1~3칸, 빈칸은 '')을 box에 그린다. 다른 칸에서 고른 사람과 owner 본인은 목록에서 뺀다 */
+function renderSubPicker(box, owner, subs, onChange, firstOptional) {
+  const own = partOf(owner);
+  box.innerHTML = subs.map((cur, i) => {
+    const taken = subs.filter((e, j) => j !== i && e);
+    const groups = {};
+    S.users.filter((u) => u.email !== owner && taken.indexOf(u.email) < 0)
+      .forEach((u) => (groups[u.part || 'PM'] = groups[u.part || 'PM'] || []).push(u));
+    const order = [own, ...PARTS, 'PM'].filter((g, k, a) => g && a.indexOf(g) === k && groups[g]);
+    return `<div class="sub-row"><select data-sub="${i}"><option value="">— 대직자 ${i + 1}${i || firstOptional ? ' (선택)' : ''} —</option>${order.map((g) =>
+      `<optgroup label="${esc(g === own ? g + ' (같은 파트)' : g)}">${groups[g].sort((a, b) => a.name.localeCompare(b.name))
+        .map((u) => `<option value="${esc(u.email)}" ${u.email === cur ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</optgroup>`).join('')}</select>
+      ${i ? `<button type="button" class="icon-btn" data-subdel="${i}" aria-label="대직자 ${i + 1} 빼기">✕</button>` : ''}</div>`;
+  }).join('') + (subs.length < MAX_SUBS ? '<button type="button" class="btn sm" data-subadd>+ 대직자 추가</button>' : '');
+  const again = () => { renderSubPicker(box, owner, subs, onChange, firstOptional); if (onChange) onChange(); };
+  box.querySelectorAll('[data-sub]').forEach((el) => (el.onchange = () => { subs[+el.dataset.sub] = el.value; again(); }));
+  box.querySelectorAll('[data-subdel]').forEach((el) => (el.onclick = () => { subs.splice(+el.dataset.subdel, 1); again(); }));
+  const add = box.querySelector('[data-subadd]');
+  if (add) add.onclick = () => { subs.push(''); renderSubPicker(box, owner, subs, onChange, firstOptional); box.querySelector(`[data-sub="${subs.length - 1}"]`).focus(); };
+}
+
+/** 기본 대직자 — 본인 것은 누구나, 다른 사람 것은 PM만 서버에서 받는다 */
+function defaultSubsOf(email) {
+  if (email === S.me.email) return S.me.defaultSubs || [];
+  return (S.users.find((u) => u.email === email) || {}).defaultSubs || [];
+}
+const sameSubs = (a, b) => a.slice().sort().join() === b.slice().sort().join();
+
+/* ---------- 휴가 등록/수정 ---------- */
+function openLeaveForm(id, date, restore) {
+  const ex = id ? S.leaves.find((l) => l.id === id) : null;
+  const owner = ex ? ex.email : S.me.email;
+  // 새 일정이면 기본 대직자 → 없으면 지난번에 지정했던 대직자를 채워준다
+  const lastSubs = (email) => {
+    const def = defaultSubsOf(email);
+    if (def.length) return def.slice(0, MAX_SUBS);
+    const prev = S.leaves.filter((l) => l.email === email).sort((a, b) => (b.updatedAt || b.startDate).localeCompare(a.updatedAt || a.startDate))[0];
+    return prev && prev.substitutes.length ? prev.substitutes.slice(0, MAX_SUBS) : [''];
+  };
+  const f = restore ? { ...restore, subs: restore.subs.slice() }
+    : ex ? { ...ex, subs: ex.substitutes.length ? ex.substitutes.slice() : [''] }
+    : { id: '', email: owner, type: '연차', startDate: date || todayStr(), endDate: date || todayStr(), subs: lastSubs(owner), memo: '' };
+  const chosen = () => f.subs.filter(Boolean);
+
+  const m = openModal(`
+    <header><h3>${ex ? '일정 수정' : '일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      ${isAdmin() ? `<div class="field"><label>대상자</label><select name="email" ${ex ? 'disabled' : ''}>
+        ${S.users.map((u) => `<option value="${esc(u.email)}" ${u.email === f.email ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></div>` : ''}
+      <div class="field"><label>유형 <span class="req">*</span></label>
+        <div class="seg">${TYPES.map((t) => `<button type="button" data-type="${t}" class="${f.type === t ? 'on' : ''}"><i class="dot t-${t}"></i>${t}</button>`).join('')}</div></div>
+      <div class="row2">
+        <div class="field"><label data-startlabel>시작일 <span class="req">*</span></label><input type="date" name="startDate" value="${f.startDate}"></div>
+        <div class="field" data-endwrap><label>종료일 <span class="req">*</span></label><input type="date" name="endDate" value="${f.endDate}"></div>
+      </div>
+      <div class="field"><label>대직자 <span class="req">*</span> <span class="muted" style="font-weight:400">최대 ${MAX_SUBS}명 · 한 명이라도 같은 날 부재면 경고</span></label><div data-subs></div>
+        <label class="toggle" data-defwrap style="margin-top:4px"><input type="checkbox" data-savedefault> <span data-deflabel></span></label></div>
+      <div class="field"><label>메모</label><input name="memo" maxlength="200" placeholder="선택 입력 (예: 병원, 교육)" value="${esc(f.memo)}"></div>
+      <div data-days></div><div data-check></div>
+    </div>
+    <footer>
+      ${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span>
+      <button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '등록'}</button>
+    </footer>`);
+
+  const q = (s) => m.querySelector(s);
+  const payload = () => ({ id: f.id, email: f.email, type: f.type, startDate: f.startDate, endDate: f.endDate, substitutes: chosen(), memo: f.memo });
+
+  // 대직자 겹침은 서버가 판단 (팀원은 다른 사람 일정을 받지 않으므로)
+  let seq = 0, timer = null;
+  const check = () => {
+    clearTimeout(timer);
+    const my = ++seq;
+    q('[data-check]').innerHTML = chosen().length ? '<div class="infobox">대직자 일정 확인 중…</div>' : '';
+    timer = setTimeout(() => {
+      api('checkLeave', payload()).then((r) => {
+        if (my !== seq || !$modal || $modal !== m) return;
+        q('[data-check]').innerHTML =
+          (r.duplicate ? `<div class="warnbox">${esc(r.duplicate)}</div>` : '') +
+          (r.warnings.length ? `<div class="warnbox"><b>⚠ 대직자와 일정이 겹칩니다</b>${r.warnings.map((w) => `<div>· ${esc(w)}</div>`).join('')}</div>` : '') +
+          (!r.duplicate && !r.warnings.length && chosen().length ? `<div class="infobox">✓ 대직자${chosen().length > 1 ? ' 모두' : ''} 일정과 겹치지 않습니다.</div>` : '');
+      }).catch(handleError);
+    }, 250);
+  };
+
+  const update = () => {
+    const half = !!HALF[f.type];
+    q('[data-endwrap]').style.display = half ? 'none' : '';
+    q('[data-startlabel]').innerHTML = (half ? '날짜' : '시작일') + ' <span class="req">*</span>';
+    if (half || f.endDate < f.startDate) { f.endDate = f.startDate; q('[name=endDate]').value = f.endDate; }
+    q('[name=endDate]').min = f.startDate;
+    f.subs = f.subs.map((e) => (e === f.email ? '' : e));
+    renderSubPicker(q('[data-subs]'), f.email, f.subs, update);
+    // 지금 고른 대직자가 기본 대직자와 다르면 '기본으로 저장' 체크박스를 보여준다
+    const def = defaultSubsOf(f.email);
+    const showDef = chosen().length > 0 && !sameSubs(chosen(), def) && (f.email === S.me.email || isAdmin());
+    q('[data-defwrap]').style.display = showDef ? '' : 'none';
+    q('[data-deflabel]').textContent = f.email === S.me.email ? '이 대직자를 내 기본 대직자로 저장' : `${nameOf(f.email)}님의 기본 대직자로 저장`;
+    if (f.saveDefault == null) f.saveDefault = !def.length; // 기본 대직자가 아직 없으면 체크된 채로
+    q('[data-savedefault]').checked = f.saveDefault;
+    f.showDef = showDef;
+    const evs = f.startDate ? (S.events || []).filter((e) => e.startDate <= f.endDate && f.startDate <= e.endDate) : [];
+    q('[data-days]').innerHTML = (f.startDate ? `<div class="infobox">사용일수 <b>${workdays(f)}일</b> <span class="small">(주말·공휴일 제외)</span></div>` : '')
+      + (evs.length ? `<div class="infobox" style="color:var(--evt)"><b>★ 이 기간에 중요 일정이 있습니다</b>${evs.map((e) => `<div>· ${esc(evtWhen(e))} ${esc(e.title)}</div>`).join('')}</div>` : '');
+    if (f.startDate) check();
+  };
+
+  q('[data-savedefault]').onchange = (e) => (f.saveDefault = e.target.checked);
+
+  m.querySelectorAll('[data-type]').forEach((b) => (b.onclick = () => {
+    f.type = b.dataset.type;
+    m.querySelectorAll('[data-type]').forEach((x) => x.classList.toggle('on', x === b));
+    update();
+  }));
+  if (q('[name=email]')) q('[name=email]').onchange = (e) => { f.email = e.target.value; f.subs = lastSubs(f.email); update(); };
+  q('[name=startDate]').onchange = (e) => { f.startDate = e.target.value; update(); };
+  q('[name=endDate]').onchange = (e) => { f.endDate = e.target.value; update(); };
+  q('[name=memo]').oninput = (e) => (f.memo = e.target.value);
+  if (q('[data-del]')) q('[data-del]').onclick = () => removeLeave(f.id);
+
+  q('[data-save]').onclick = async () => {
+    if (!f.startDate) return toast('날짜를 선택하세요.', true);
+    if (!chosen().length) { q('[data-sub="0"]').focus(); return toast('대직자를 1명 이상 지정해야 합니다.', true); }
+    const p = payload();
+    loading(true);
+    let r;
+    try { r = await api('checkLeave', p); } catch (e) { loading(false); return handleError(e); }
+    loading(false);
+    if (r.duplicate) return toast(r.duplicate, true);
+    if (r.warnings.length) {
+      const ok = await confirmBox('대직자와 일정이 겹칩니다', `<div class="warnbox" style="margin-top:0">${r.warnings.map((w) => `<div>⚠ ${esc(w)}</div>`).join('')}</div>
+        <p class="muted small">그래도 저장하면 캘린더에 경고 표시가 남습니다. 대직자를 바꾸는 것을 권장합니다.</p>`, '그래도 저장');
+      if (!ok) return openLeaveForm(id, null, f); // 입력하던 내용 그대로 폼으로 돌아감
+    }
+    const asDefault = f.showDef && f.saveDefault;
+    run(api('saveLeave', { ...p, saveDefault: asDefault }), (ex ? '수정했습니다.' : '등록했습니다.') + (asDefault ? ' 기본 대직자도 저장했습니다.' : ''));
+  };
+  update();
+}
+
+async function removeLeave(id) {
+  const l = S.leaves.find((x) => x.id === id);
+  if (!l) return;
+  const ok = await confirmBox('일정 삭제', `<p>${esc(nameOf(l.email))} · ${l.type} · ${fmtRange(l)}<br>일정을 삭제할까요?</p>`, '삭제', true);
+  if (ok) run(api('deleteLeave', id), '삭제했습니다.');
+}
+
+/* ---------- 팀원 ---------- */
+function openUserForm(email) {
+  const ex = email ? S.users.find((u) => u.email === email) : null;
+  const m = openModal(`
+    <header><h3>${ex ? '팀원 수정' : '팀원 추가'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="field"><label>이메일 (로그인 ID) <span class="req">*</span></label><input name="email" type="email" value="${ex ? esc(ex.email) : ''}" ${ex ? 'disabled' : ''} placeholder="name@example.com"></div>
+      <div class="field"><label>이름 <span class="req">*</span></label><input name="name" value="${ex ? esc(ex.name) : ''}" placeholder="홍길동"></div>
+      <div class="field"><label>권한</label><select name="role">
+        <option value="member" ${!ex || ex.role === 'member' ? 'selected' : ''}>파트원 — 같은 파트 일정 조회</option>
+        <option value="pl" ${ex && ex.role === 'pl' ? 'selected' : ''}>PL — 전체 직원 일정 조회</option>
+        <option value="pm" ${ex && ex.role === 'pm' ? 'selected' : ''}>PM (관리자) — 전체 메뉴</option></select></div>
+      <div class="field"><label>파트 <span class="req" data-partreq>*</span></label><select name="part">
+        <option value="">— 파트 선택 —</option>
+        ${PARTS.map((p) => `<option ${ex && ex.part === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
+        <div class="muted small" style="margin-top:4px">PM은 파트를 비워둘 수 있습니다.</div></div>
+      <div class="field" data-viewallwrap><label class="toggle" style="color:var(--text)"><input type="checkbox" name="viewAll" ${ex && ex.viewAll ? 'checked' : ''}>
+        <span><b>전체 일정 조회</b> <span class="muted small">— 파트원 중 근태 보고 담당 등. 전체 일정을 볼 수만 있고 수정은 본인 일정만 가능. 휴가 사용 현황은 볼 수 없음</span></span></label></div>
+      <div class="field"><label>기본 대직자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_SUBS}명</span></label><div data-defsubs></div></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>저장</button></footer>`);
+  const roleSel = m.querySelector('[name=role]');
+  const syncViewAll = () => (m.querySelector('[data-viewallwrap]').style.display = roleSel.value === 'member' ? '' : 'none'); // PM·PL은 이미 전체를 봄
+  roleSel.addEventListener('change', syncViewAll);
+  syncViewAll();
+  const subs = ex && ex.defaultSubs && ex.defaultSubs.length ? ex.defaultSubs.slice() : [''];
+  renderSubPicker(m.querySelector('[data-defsubs]'), ex ? ex.email : '', subs, null, true);
+  m.querySelector('[data-save]').onclick = () => run(api('saveUser', {
+    defaultSubs: subs.filter(Boolean),
+    email: ex ? ex.email : m.querySelector('[name=email]').value,
+    name: m.querySelector('[name=name]').value,
+    role: m.querySelector('[name=role]').value,
+    viewAll: m.querySelector('[name=viewAll]').checked,
+    part: m.querySelector('[name=part]').value,
+    isNew: !ex,
+  }), ex ? '저장했습니다.' : '', (res) => { if (res.tempPassword) showTempPassword(res, '팀원을 추가했습니다', true); });
+}
+
+/* ---------- 일괄 등록 (엑셀·시트에서 붙여넣기) ---------- */
+function parseBulk(text) {
+  const seen = {};
+  S.users.forEach((u) => (seen[u.email] = 'registered'));
+  return text.split(/\r?\n/).map((line) => line.split(/\t|,/).map((c) => c.trim()))
+    .filter((c) => c.some(Boolean))
+    .filter((c) => !/이메일|email/i.test(c[0])) // 제목 줄은 건너뜀
+    .map(([email = '', name = '', part = '', role = '']) => {
+      email = email.toLowerCase();
+      const r = { email, name, part, role: roleOfText(role) };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) r.error = '이메일 형식 오류';
+      else if (!name) r.error = '이름 없음';
+      else if (r.role !== 'pm' && !PARTS.includes(part)) r.error = `파트 확인 (${PARTS.join('/')})`;
+      else if (seen[email] === 'registered') r.error = '이미 등록됨';
+      else if (seen[email]) r.error = '목록에 중복';
+      seen[email] = seen[email] || 'batch';
+      return r;
+    });
+}
+
+function openBulkForm() {
+  const m = openModal(`
+    <header><h3>직원 일괄 등록</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="infobox" style="margin-top:0;color:var(--text)">엑셀이나 구글 시트에서 <b>이메일 · 이름 · 파트 · 권한</b> 순서의 칸을 복사해서 붙여넣으세요.<br>
+        <span class="muted small">파트: ${PARTS.join(' / ')} · 권한: 파트원 / PL / PM (비우면 파트원) · 쉼표로 구분해도 됩니다</span></div>
+      <div class="field"><textarea name="bulk" rows="7" spellcheck="false" placeholder="kim@example.com&#9;김철수&#9;개발&#9;PL&#10;lee@example.com&#9;이영희&#9;개발&#10;park@example.com, 박민수, QA, 파트원"></textarea></div>
+      <div data-bulkpreview></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save disabled>등록</button></footer>`);
+  const ta = m.querySelector('[name=bulk]');
+  const save = m.querySelector('[data-save]');
+  let rows = [];
+  ta.oninput = () => {
+    rows = parseBulk(ta.value);
+    const ok = rows.filter((r) => !r.error);
+    save.disabled = !ok.length;
+    save.textContent = ok.length ? `${ok.length}명 등록` : '등록';
+    m.querySelector('[data-bulkpreview]').innerHTML = rows.length ? `
+      <div class="card table-wrap" style="margin-top:10px"><table>
+        <thead><tr><th>이름</th><th>이메일</th><th>파트</th><th>권한</th><th>확인</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${esc(r.part)}</td><td>${ROLE_TEXT[r.role]}</td>
+          <td style="color:${r.error ? 'var(--danger)' : 'var(--t-am)'}">${r.error ? '✕ ' + esc(r.error) : '✓'}</td></tr>`).join('')}</tbody></table></div>
+      ${rows.length > ok.length ? `<p class="muted small">✕ 표시된 ${rows.length - ok.length}줄은 빼고 등록합니다.</p>` : ''}` : '';
+  };
+  save.onclick = () => run(api('bulkAddUsers', rows.filter((r) => !r.error).map(({ email, name, part, role }) => ({ email, name, part, role }))),
+    '', showBulkResult);
+}
+
+function showBulkResult(res) {
+  const list = res.created || [];
+  const m = openModal(`
+    <header><h3>${list.length}명 등록했습니다</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <p class="small">사람마다 <b>메시지 복사</b>를 눌러 메신저로 보내세요. <b>이 창을 닫으면 임시 비밀번호를 다시 볼 수 없습니다.</b><br>
+        <span class="muted">놓친 사람은 팀원 관리에서 [비밀번호 초기화]로 다시 발급할 수 있습니다.</span></p>
+      <div class="list">${list.map((u, i) => `
+        <div class="card item"><div class="body">
+          <div class="title">${esc(u.name)} <span class="badge">${esc(u.part ? u.part + ' ' : '')}${ROLE_TEXT[u.role]}</span></div>
+          <div class="meta">${esc(u.email)} · 임시 비밀번호 <b class="mono" style="font-size:13px">${esc(u.tempPassword)}</b></div></div>
+          <div class="actions"><button class="btn sm primary" data-copyi="${i}">메시지 복사</button></div></div>`).join('')}</div>
+      ${(res.errors || []).length ? `<div class="warnbox"><b>등록하지 못한 줄</b>${res.errors.map((e) => `<div>· ${esc(e.email || e.line + '번째 줄')}: ${esc(e.message)}</div>`).join('')}</div>` : ''}
+    </div>
+    <footer><button class="btn" data-copylist>명단·임시 비밀번호 전체 복사</button><span class="spacer"></span><button class="btn" data-close>닫기</button></footer>`);
+  m.querySelectorAll('[data-copyi]').forEach((b) => (b.onclick = () => {
+    const u = list[+b.dataset.copyi];
+    copyText(inviteMessage({ email: u.email, tempPassword: u.tempPassword, appUrl: res.appUrl }, true));
+    b.textContent = '✓ 복사됨';
+    b.classList.remove('primary');
+  }));
+  m.querySelector('[data-copylist]').onclick = () =>
+    copyText(['이름\t이메일\t임시 비밀번호'].concat(list.map((u) => `${u.name}\t${u.email}\t${u.tempPassword}`)).join('\n'));
+}
+
+async function removeUser(email) {
+  const u = S.users.find((x) => x.email === email);
+  const future = S.leaves.filter((l) => l.endDate >= todayStr() && (l.email === email || l.substitutes.includes(email))).length;
+  const ok = await confirmBox('팀원 삭제', `<p>${esc(u.name)} (${esc(email)})을(를) 삭제할까요?</p>
+    ${future ? `<div class="warnbox">이 팀원과 관련된 예정 일정이 ${future}건 있습니다. 삭제 후에도 일정은 남지만 이름 대신 이메일로 표시됩니다.</div>` : ''}`, '삭제', true);
+  if (ok) run(api('deleteUser', email), '삭제했습니다.');
+}
+
+async function resetPw(email) {
+  const ok = await confirmBox('비밀번호 초기화', `<p>${esc(nameOf(email))}님의 비밀번호를 새 임시 비밀번호로 바꿀까요?<br><span class="muted small">기존 비밀번호와 로그인 상태는 즉시 무효가 됩니다.</span></p>`, '초기화');
+  if (ok) run(api('resetPassword', email), '', (res) => showTempPassword(res, '비밀번호를 초기화했습니다', false));
+}
+
+/* ---------- 공휴일 ---------- */
+function openHolidayForm() {
+  const m = openModal(`
+    <header><h3>공휴일 추가</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="field"><label>날짜 <span class="req">*</span></label><input type="date" name="date" value="${ui.holYear}-01-01"></div>
+      <div class="field"><label>이름 <span class="req">*</span></label><input name="name" placeholder="예: 임시공휴일"></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>추가</button></footer>`);
+  m.querySelector('[data-save]').onclick = () => run(api('saveHoliday', { date: m.querySelector('[name=date]').value, name: m.querySelector('[name=name]').value }), '추가했습니다.');
+}
+
+/* =========================================================
+   서버 호출 / 이벤트
+   ========================================================= */
+let $toast = null, toastTimer = null;
+function toast(msg, err) {
+  if ($toast) $toast.remove();
+  $toast = document.createElement('div');
+  $toast.className = 'toast' + (err ? ' err' : '');
+  $toast.textContent = msg;
+  document.body.appendChild($toast);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { if ($toast) { $toast.remove(); $toast = null; } }, 3200);
+}
+
+let $loading = null;
+function loading(on) {
+  if (on && !$loading) { $loading = document.createElement('div'); $loading.className = 'loading'; $loading.innerHTML = '<div class="spinner"></div>'; document.body.appendChild($loading); }
+  if (!on && $loading) { $loading.remove(); $loading = null; }
+}
+
+function handleError(e) {
+  const msg = (e && e.message) || String(e);
+  if (msg.indexOf('AUTH:') >= 0) { // 토큰 만료·비밀번호 변경됨 → 로그인 화면
+    setToken(''); syncUrlToken(''); S = null; screen = 'login'; closeModal(); render();
+    return toast(msg.slice(msg.indexOf('AUTH:') + 5), true);
+  }
+  toast(msg, true);
+}
+
+/** 서버 응답 { state, token?, ... } 을 반영 */
+async function run(promise, okMsg, after) {
+  loading(true);
+  try {
+    const res = await promise;
+    if (res.token) { setToken(res.token); if (urlToken) syncUrlToken(res.token); } // 비밀번호 변경 시 주소의 로그인 정보도 교체
+    if (res.state) { S = res.state; screen = 'app'; }
+    closeModal();
+    render();
+    if (okMsg) toast(okMsg);
+    if (after) after(res);
+  } catch (e) {
+    handleError(e);
+  } finally {
+    loading(false);
+  }
+}
+
+async function boot() {
+  screen = 'loading'; render();
+  const fromUrl = await readUrlToken();
+  if (fromUrl) { urlToken = true; if (!getToken()) setToken(fromUrl); }
+  call('getBootstrap', getToken()).then((res) => {
+    if (res.needsSetup) screen = 'setup';
+    else if (res.needLogin) {
+      // 저장된 로그인 정보가 만료됐으면 주소에 붙은 것으로 한 번 더 시도
+      if (fromUrl && getToken() !== fromUrl) { setToken(fromUrl); return boot(); }
+      setToken(''); if (urlToken) syncUrlToken(''); screen = 'login';
+    }
+    else { S = res.state; screen = 'app'; }
+    render();
+  }).catch((e) => { screen = 'error'; screenMsg = (e && e.message) || String(e); render(); });
+}
+
+document.addEventListener('submit', (e) => {
+  const form = e.target.closest('[data-form]');
+  if (!form) return;
+  e.preventDefault();
+  if ($loading) return; // 처리 중 중복 제출 방지
+  const v = (n) => (form.querySelector(`[name=${n}]`) || {}).value || '';
+  switch (form.dataset.form) {
+    case 'login': {
+      const remember = !!(form.querySelector('[name=remember]') || {}).checked;
+      rememberMode = remember;
+      run(call('login', v('email'), v('password'), remember), '', () => syncUrlToken(remember ? getToken() : ''));
+      break;
+    }
+    case 'setup': run(call('setupAdmin', { email: v('email'), name: v('name'), password: v('password') }), '관리자 계정을 만들었습니다.'); break;
+    case 'password':
+      if (v('next') !== v('next2')) return toast('새 비밀번호 확인이 일치하지 않습니다.', true);
+      run(api('changePassword', v('current'), v('next'), rememberMode || urlToken), '비밀번호를 변경했습니다.');
+      break;
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-act]');
+  if (!t || t.tagName === 'SELECT' || t.tagName === 'INPUT') return;
+  const v = t.dataset.v;
+  switch (t.dataset.act) {
+    case 'tab':
+      if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
+      else ui.tab = v;
+      render(); window.scrollTo(0, 0); break;
+    case 'month': {
+      const t0 = new Date();
+      ui.month = v === '0' ? new Date(t0.getFullYear(), t0.getMonth(), 1) : new Date(ui.month.getFullYear(), ui.month.getMonth() + Number(v), 1);
+      render(); break;
+    }
+    case 'day': openDay(v); break;
+    case 'newLeave': openLeaveForm(null); break;
+    case 'editLeave': openLeaveForm(v); break;
+    case 'delLeave': removeLeave(v); break;
+    case 'newUser': openUserForm(); break;
+    case 'bulkUsers': openBulkForm(); break;
+    case 'editUser': openUserForm(v); break;
+    case 'delUser': removeUser(v); break;
+    case 'resetPw': resetPw(v); break;
+    case 'newHoliday': openHolidayForm(); break;
+    case 'newEvent': openEventForm(null, v); break;
+    case 'editEvent': openEventForm(v); break;
+    case 'delEvent': removeEvent(v); break;
+    case 'delHoliday': confirmBox('공휴일 삭제', `<p>${fmtShort(v)} ${esc(D.holidays[v] || '')}을(를) 삭제할까요?</p>`, '삭제', true).then((ok) => ok && run(api('deleteHoliday', v), '삭제했습니다.')); break;
+    case 'holYear': ui.holYear += Number(v); render(); break;
+    case 'clearMonth': ui.allFilter.month = ''; render(); break;
+    case 'account': openAccount(); break;
+    case 'copyAttendance': copyText(attendanceText(v)); break;
+    case 'logout': setToken(''); syncUrlToken(''); S = null; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
+    case 'reload': boot(); break;
+    case 'reset': Mock._reset(); setToken(Mock._tokenFor('lead@example.com')); boot(); break;
+  }
+});
+
+document.addEventListener('change', (e) => {
+  const t = e.target.closest('[data-act]');
+  if (!t) return;
+  switch (t.dataset.act) {
+    case 'mineOnly': ui.mineOnly = t.checked; render(); break;
+    case 'part': ui.part = t.value; ui.allFilter.member = ''; render(); break;
+    case 'filter': ui.allFilter[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; render(); break;
+    case 'switch':
+      if (t.value === '__setup') { Mock._empty(); setToken(''); }
+      else if (t.value === '__logout') { if (!Mock._db().users.length) Mock._reset(); setToken(''); }
+      else setToken(Mock._tokenFor(t.value));
+      ui.tab = 'cal'; boot(); break;
+  }
+});
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dismissModal(); });
+
+let lastMobile = window.matchMedia('(max-width: 640px)').matches;
+window.addEventListener('resize', () => {
+  const m = window.matchMedia('(max-width: 640px)').matches;
+  if (m !== lastMobile) { lastMobile = m; if (screen === 'app' && ui.tab === 'cal') render(); }
+});
+
+if (MODE === 'mock' && !getToken() && Mock._db().users.length) setToken(Mock._tokenFor('lead@example.com'));
+boot();
+</script>
+</body>
+</html>
