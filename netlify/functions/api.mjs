@@ -6,7 +6,7 @@ const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzz
 const GAS_URL = process.env.GAS_URL || `https://script.google.com/macros/s/${DEPLOY_ID}/exec`;
 
 // 조회만 하는 요청은 구글 응답 전달(echo)이 실패하면 다시 보내도 안전하다
-const READ_ONLY = new Set(['getBootstrap', 'checkLeave']);
+const READ_ONLY = new Set(['getBootstrap', 'checkLeave', 'getTasks', 'checkTaskAbsence']);
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -48,7 +48,10 @@ export default async (req) => {
     fn = String(JSON.parse(body).fn || '');
   } catch (e) { return json({ ok: false, error: '요청 형식이 올바르지 않습니다.' }, 400); }
 
-  const tries = READ_ONLY.has(fn) ? 3 : 1;
+  // 조회, 그리고 요청 ID(rid)가 붙은 저장 요청은 다시 보내도 서버가 한 번만 처리하므로 3번까지 시도
+  let rid = '';
+  try { rid = String(JSON.parse(body).rid || ''); } catch (e) {}
+  const tries = READ_ONLY.has(fn) || rid ? 3 : 1;
   for (let i = 1; i <= tries; i++) {
     try {
       const text = await forward(body);

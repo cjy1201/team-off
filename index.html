@@ -397,7 +397,7 @@ function callBridge(fn, args) {
 }
 
 // 조회만 하는 요청 — 응답을 못 받으면 자동으로 다시 보내도 안전하다
-const READ_ONLY = { getBootstrap: true, checkLeave: true };
+const READ_ONLY = { getBootstrap: true, checkLeave: true, getTasks: true, checkTaskAbsence: true };
 
 /*
  * 회사망(모개망)은 외부 사이트로 가는 POST 요청을 보안 장비가 가로채서 안내 문구로 바꿔치기한다.
@@ -407,6 +407,12 @@ const READ_ONLY = { getBootstrap: true, checkLeave: true };
 const GET_KEY = 'team-off-use-get';
 let useGet = false;
 try { useGet = localStorage.getItem(GET_KEY) === '1'; } catch (e) {}
+
+function newRid() {
+  const a = new Uint8Array(12);
+  (window.crypto || crypto).getRandomValues(a);
+  return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 /** 문자열(한글 포함) → URL에 넣을 수 있는 base64url */
 function toB64Url(str) {
@@ -418,7 +424,8 @@ function toB64Url(str) {
 
 function fetchOnce(fn, args) {
   const lost = () => { const e = new Error('lost'); e.lost = true; throw e; };
-  const payload = JSON.stringify({ fn, args });
+  // 저장 요청에는 한 번만 처리되도록 요청 ID(rid)를 붙인다 (전달 서버가 응답을 잃어버려 다시 보내도 중복 저장 안 됨)
+  const payload = JSON.stringify(READ_ONLY[fn] ? { fn, args } : { fn, args, rid: newRid() });
   const viaGet = USE_PROXY && useGet;
   // POST는 text/plain 으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 바로 보낸다
   const req = viaGet
@@ -1907,6 +1914,12 @@ function loading(on) {
 
 function handleError(e) {
   const msg = (e && e.message) || String(e);
+  if (msg.indexOf('SAVED:') === 0) { // 저장은 됐는데 결과가 커서 못 받은 경우 → 다시 불러오기
+    closeModal(); toast(msg.slice(6));
+    W.loaded = false;
+    call('getBootstrap', getToken()).then((b) => { if (b.state) { S = b.state; render(); } }).catch(() => {});
+    return;
+  }
   if (msg.indexOf('AUTH:') >= 0) { // 토큰 만료·비밀번호 변경됨 → 로그인 화면
     setToken(''); syncUrlToken(''); S = null; screen = 'login'; closeModal(); render();
     return toast(msg.slice(msg.indexOf('AUTH:') + 5), true);
