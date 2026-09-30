@@ -186,6 +186,17 @@
   .toggle.remember { align-items: flex-start; margin-top: 14px; color: var(--text); }
   .toggle.remember input { margin-top: 3px; }
   .whoami.btn { padding: 4px 8px; font-weight: 500; }
+  /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 기타) */
+  .k-0 { background: #4f46e5; } .k-1 { background: #dc2626; } .k-2 { background: #d97706; }
+  .k-3 { background: #0d9488; } .k-4 { background: #db2777; } .k-5 { background: #64748b; }
+  .chip .pt { flex: none; opacity: .85; font-weight: 600; }
+  .chip.done { opacity: .45; text-decoration: line-through; }
+  .chips-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chips-row button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+  .chips-row button.on { border-color: var(--primary); background: var(--primary-weak); color: var(--primary); }
+  .assignee-box { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .assignee-box .name-chip button { border: 0; background: none; padding: 0 0 0 4px; color: var(--muted); }
+  .assignee-box select { flex: 1; min-width: 140px; }
   .designated { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; color: var(--text); }
   .designated b { margin-right: 4px; font-size: 13px; }
   .name-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
@@ -442,7 +453,7 @@ const api = (fn, ...args) => call(fn, getToken(), ...args);
 
 /* 미리보기용 가짜 서버 — Code.gs와 같은 권한 규칙·필터링을 따른다. */
 const Mock = (() => {
-  const KEY = 'team-off-preview-v9';
+  const KEY = 'team-off-preview-v10';
   const PW = 'test1234';
   const holidays = [
     ['2026-01-01', '신정'], ['2026-02-16', '설날 연휴'], ['2026-02-17', '설날'], ['2026-02-18', '설날 연휴'],
@@ -478,6 +489,13 @@ const Mock = (() => {
         L('han@example.com', '연차', 9, 9, 'jung@example.com', '이사'),
       ],
       holidays,
+      tasks: [
+        { id: 'T1', part: '개발', title: '10월 정기배포 준비', category: '개발', startDate: rel(1), endDate: rel(4), time: '', assignees: ['lee@example.com', 'park@example.com'], status: '진행 중', visibility: 'all', memo: '', createdBy: 'lee@example.com' },
+        { id: 'T2', part: '개발', title: '정기배포', category: '배포', startDate: rel(5), endDate: rel(5), time: '22:00~', assignees: ['park@example.com'], status: '예정', visibility: 'all', memo: '', createdBy: 'park@example.com' },
+        { id: 'T3', part: 'QA', title: '회귀 테스트', category: '테스트', startDate: rel(6), endDate: rel(8), time: '', assignees: ['choi@example.com', 'jung@example.com'], status: '예정', visibility: 'all', memo: '', createdBy: 'choi@example.com' },
+        { id: 'T4', part: '디자인', title: '3.2 시안 마감', category: '마감', startDate: rel(3), endDate: rel(3), time: '', assignees: ['han@example.com'], status: '예정', visibility: 'all', memo: '', createdBy: 'han@example.com' },
+        { id: 'T5', part: '개발', title: '파트 코드리뷰', category: '회의/리뷰', startDate: rel(2), endDate: rel(2), time: '16:00', assignees: [], status: '예정', visibility: 'part', memo: '개발 파트 내부', createdBy: 'lee@example.com' },
+      ],
       events: [
         { id: 'E1', title: '정기 배포', startDate: rel(5), endDate: rel(5), time: '22:00~', memo: '배포 당일 개발·QA 휴가 자제' },
         { id: 'E2', title: '전담반 워크숍', startDate: rel(16), endDate: rel(17), time: '', memo: '전원 참석' },
@@ -639,6 +657,35 @@ const Mock = (() => {
       const a = admin(token); need(email !== a.email, '본인 계정은 삭제할 수 없습니다.');
       db.users = db.users.filter((u) => u.email !== email); return result(a);
     },
+    getTasks(token) {
+      const u = auth(token);
+      const pm = u.role === 'pm';
+      const editable = (t) => pm || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part);
+      return { tasks: (db.tasks || []).filter((t) => t.visibility !== 'part' || pm || u.part === t.part).map((t) => ({ ...t, canEdit: editable(t) })) };
+    },
+    saveTask(token, i) {
+      const u = auth(token);
+      const pm = u.role === 'pm';
+      db.tasks = db.tasks || [];
+      const ex = i.id ? db.tasks.find((t) => t.id === i.id) : null;
+      if (ex) need(pm || ex.createdBy === u.email || (u.role === 'pl' && u.part === ex.part), '작성자, 해당 파트 PL, PM만 수정할 수 있습니다.');
+      const part = pm ? i.part : ex ? ex.part : u.part;
+      need(PARTS.includes(part), pm ? '파트를 선택하세요.' : '파트가 지정되지 않은 계정입니다.');
+      need((i.title || '').trim(), '제목을 입력하세요.');
+      need(i.startDate && (i.endDate || i.startDate) >= i.startDate, '날짜를 확인하세요.');
+      const row = { id: ex ? ex.id : 'T' + Date.now(), part, title: i.title.trim(), category: i.category, startDate: i.startDate, endDate: i.endDate || i.startDate,
+        time: i.time || '', assignees: (i.assignees || []).slice(0, 10), status: i.status || '예정', visibility: i.visibility === 'part' ? 'part' : 'all', memo: i.memo || '', createdBy: ex ? ex.createdBy : u.email };
+      db.tasks = db.tasks.filter((t) => t.id !== row.id).concat([row]); persist();
+      return this.getTasks(token);
+    },
+    deleteTask(token, id) {
+      const u = auth(token);
+      const t = (db.tasks || []).find((x) => x.id === id);
+      need(t, '이미 삭제된 업무 일정입니다.');
+      need(u.role === 'pm' || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part), '작성자, 해당 파트 PL, PM만 삭제할 수 있습니다.');
+      db.tasks = db.tasks.filter((x) => x.id !== id); persist();
+      return this.getTasks(token);
+    },
     saveEvent(token, e) {
       const a = admin(token);
       need((e.title || '').trim(), '제목을 입력하세요.');
@@ -672,6 +719,9 @@ const ui = {
   part: '', // PM 파트 필터
   allFilter: { member: '', month: '', warnOnly: false },
   holYear: new Date().getFullYear(),
+  workMonth: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); })(),
+  workPart: '',   // 업무 일정 파트 필터 ('' = 전체)
+  workMine: false, // 내 담당·내가 쓴 것만
 };
 let D = {}; // 파생 데이터
 
@@ -726,7 +776,7 @@ function render() {
   if (S.me.mustChange) { $app.innerHTML = bar + viewForceChange(); return; }
 
   derive();
-  const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['mine', '내 일정']];
+  const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['work', '업무 일정'], ['mine', '내 일정']];
   if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일']);
   else if (canSeeAll()) tabs.push(['all', '전체 일정']);
   else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
@@ -740,7 +790,7 @@ function render() {
       </div>
       <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}</button>`).join('')}</nav>
     </div></header>
-    <main>${({ cal: viewCalendar, events: viewEvents, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays })[ui.tab]()}</main>`;
+    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays })[ui.tab]()}</main>`;
 }
 
 function previewBar() {
@@ -944,6 +994,201 @@ function leaveItem(l, opts = {}) {
       <button class="btn sm" data-act="editLeave" data-v="${l.id}">수정</button>
       <button class="btn sm danger" data-act="delLeave" data-v="${l.id}">삭제</button></div>` : ''}
   </div>`;
+}
+
+/* =========================================================
+   업무 일정 — 파트별 업무 공유 (휴가 일정과 데이터·화면 모두 별도)
+   탭을 열 때만 서버에서 불러온다 (getTasks)
+   ========================================================= */
+const TASK_CATS = ['개발', '배포', '테스트', '회의/리뷰', '마감', '기타'];
+const TASK_STATUS = ['예정', '진행 중', '완료', '지연'];
+const MAX_ASSIGNEES = 10;
+const W = { loaded: false, loading: false, error: '', tasks: [] };
+const catIdx = (c) => Math.max(TASK_CATS.indexOf(c), 0);
+
+function loadTasks(force) {
+  if (W.loading || (W.loaded && !force)) return;
+  W.loading = true;
+  api('getTasks')
+    .then((r) => { W.tasks = r.tasks || []; W.loaded = true; W.error = ''; })
+    .catch((e) => { const m = (e && e.message) || String(e); if (m.indexOf('AUTH:') >= 0) return handleError(e); W.error = m; })
+    .finally(() => { W.loading = false; if (screen === 'app' && ui.tab === 'work') render(); });
+}
+
+/** 업무 일정 저장·삭제 결과({ tasks }) 반영 */
+async function runTasks(promise, okMsg) {
+  loading(true);
+  try {
+    const r = await promise;
+    W.tasks = r.tasks || []; W.loaded = true;
+    closeModal(); render();
+    if (okMsg) toast(okMsg);
+  } catch (e) {
+    handleError(e);
+  } finally {
+    loading(false);
+  }
+}
+
+function workFiltered() {
+  const me = S.me.email;
+  return W.tasks.filter((t) => (!ui.workPart || t.part === ui.workPart) && (!ui.workMine || t.assignees.includes(me) || t.createdBy === me));
+}
+
+/** 그날 표시할 업무 (여러 날 업무는 주말·공휴일엔 표시하지 않음) */
+function tasksOn(ds, list) {
+  const d = parse(ds);
+  return list.filter((t) => t.startDate <= ds && ds <= t.endDate && (t.startDate === t.endDate || !D.isOff(ds, d)))
+    .sort((a, b) => a.part.localeCompare(b.part) || a.title.localeCompare(b.title));
+}
+
+function taskItem(t) {
+  const names = t.assignees.map((e) => esc(nameOf(e))).join(', ');
+  return `<div class="card item ${t.status === '완료' ? 'past' : ''}">
+    <div class="bar k-${catIdx(t.category)}"></div>
+    <div class="body">
+      <div class="title"><span class="badge">${esc(t.part)}</span> ${esc(t.title)}
+        <span class="muted small" style="font-weight:500">${fmtRange(t)}${t.time ? ' ' + esc(t.time) : ''}</span></div>
+      <div class="meta">${esc(t.category)} · ${esc(t.status)}${names ? ' · 담당 ' + names : ''}${t.visibility === 'part' ? ' · 파트 내부' : ''}</div>
+      ${t.memo ? `<div class="meta" style="white-space:pre-wrap">${esc(t.memo)}</div>` : ''}
+    </div>
+    ${t.canEdit ? `<div class="actions"><button class="btn sm" data-act="editTask" data-v="${t.id}">수정</button>
+      <button class="btn sm danger" data-act="delTask" data-v="${t.id}">삭제</button></div>` : ''}
+  </div>`;
+}
+
+function viewWork() {
+  if (!W.loaded) {
+    loadTasks();
+    return W.error
+      ? `<div class="card empty">업무 일정을 불러오지 못했습니다. ${esc(W.error)}<br><button class="btn sm" data-act="reloadTasks" style="margin-top:8px">다시 시도</button></div>`
+      : '<div class="card empty">업무 일정을 불러오는 중…</div>';
+  }
+  const today = todayStr();
+  const list = workFiltered();
+  const first = ui.workMonth;
+  const start = addDays(first, -first.getDay());
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
+  const mobile = window.matchMedia('(max-width: 640px)').matches;
+  const maxChips = mobile ? 3 : 4;
+  let cells = '';
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = addDays(start, i);
+    const ds = ymd(d);
+    const items = tasksOn(ds, list);
+    const cls = ['day', d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
+    const shown = items.slice(0, items.length > maxChips ? maxChips - 1 : maxChips);
+    cells += `<div class="${cls}" data-act="wday" data-v="${ds}">
+      <div class="dtop"><span class="dnum">${d.getDate()}</span>${D.holidays[ds] ? `<span class="hname">${esc(D.holidays[ds])}</span>` : ''}</div>
+      ${shown.map((t) => `<div class="chip k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}" title="[${esc(t.part)}] ${esc(t.title)}">${mobile || ui.workPart ? '' : `<span class="pt">${esc(t.part)}</span>`}<span class="nm">${esc(t.title)}</span></div>`).join('')}
+      ${items.length > shown.length ? `<div class="more">+${items.length - shown.length}</div>` : ''}
+    </div>`;
+  }
+  const ym = `${first.getFullYear()}-${pad(first.getMonth() + 1)}`;
+  const monthList = list.filter((t) => t.startDate.slice(0, 7) <= ym && ym <= t.endDate.slice(0, 7))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.part.localeCompare(b.part));
+
+  return `
+    <div class="chips-row" style="margin-bottom:10px">
+      ${['', ...PARTS].map((p) => `<button class="${ui.workPart === p ? 'on' : ''}" data-act="wpart" data-v="${p}">${p || '전체 파트'}</button>`).join('')}
+    </div>
+    <div class="cal-toolbar">
+      <div class="month-nav">
+        <button class="icon-btn" data-act="wmonth" data-v="-1" aria-label="이전 달">‹</button>
+        <h2>${first.getFullYear()}년 ${first.getMonth() + 1}월</h2>
+        <button class="icon-btn" data-act="wmonth" data-v="1" aria-label="다음 달">›</button>
+        <button class="btn sm" data-act="wmonth" data-v="0" style="margin-left:4px">오늘</button>
+      </div>
+      <div class="cal-actions">
+        <label class="toggle"><input type="checkbox" data-act="wmine" ${ui.workMine ? 'checked' : ''}> 내 업무만</label>
+        <button class="btn primary" data-act="newTask">+ 업무 등록</button>
+      </div>
+    </div>
+    <div class="card cal">
+      <div class="cal-head">${WEEK.map((w) => `<div>${w}</div>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+    </div>
+    <div class="legend">${TASK_CATS.map((c, i) => `<span><i class="dot k-${i}"></i>${c}</span>`).join('')}
+      <span>· 휴가 일정과는 별도로 관리됩니다</span></div>
+    <div class="section-title">${first.getMonth() + 1}월 업무 <span class="muted small">${monthList.length}건</span></div>
+    <div class="list">${monthList.length ? monthList.map(taskItem).join('') : '<div class="card empty">이 달에 등록된 업무가 없습니다.</div>'}</div>`;
+}
+
+function openWorkDay(ds) {
+  const items = tasksOn(ds, workFiltered());
+  const d = parse(ds);
+  openModal(`<header><h3>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]}) 업무</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content"><div class="list">${items.length ? items.map(taskItem).join('') : '<div class="empty">등록된 업무가 없습니다.</div>'}</div></div>
+    <footer><span class="spacer"></span><button class="btn primary" data-act="newTask" data-v="${ds}">+ 이 날 업무 등록</button></footer>`);
+}
+
+/** 담당자 선택 (칩 + 추가 목록, 본인 포함 가능) */
+function renderAssignees(box, list, part) {
+  const groups = {};
+  S.users.filter((u) => !list.includes(u.email)).forEach((u) => (groups[u.part || 'PM'] = groups[u.part || 'PM'] || []).push(u));
+  const order = [part, ...PARTS, 'PM'].filter((g, k, a) => g && a.indexOf(g) === k && groups[g]);
+  box.innerHTML = list.map((e, i) => `<span class="name-chip">${esc(nameOf(e))}<button type="button" data-adel="${i}" aria-label="${esc(nameOf(e))} 빼기">✕</button></span>`).join('')
+    + (list.length < MAX_ASSIGNEES ? `<select data-aadd><option value="">+ 담당자 추가</option>${order.map((g) =>
+      `<optgroup label="${esc(g)}">${groups[g].sort((a, b) => a.name.localeCompare(b.name)).map((u) => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('')}</optgroup>`).join('')}</select>` : '');
+  box.querySelectorAll('[data-adel]').forEach((b) => (b.onclick = () => { list.splice(+b.dataset.adel, 1); renderAssignees(box, list, part); }));
+  const sel = box.querySelector('[data-aadd]');
+  if (sel) sel.onchange = () => { if (sel.value) list.push(sel.value); renderAssignees(box, list, part); };
+}
+
+function openTaskForm(id, date) {
+  const ex = id ? W.tasks.find((t) => t.id === id) : null;
+  const myPart = S.me.part || '';
+  if (!ex && !isAdmin() && !myPart) return toast('파트가 지정되지 않은 계정입니다. PM에게 파트 지정을 요청하세요.', true);
+  const d0 = date || todayStr();
+  const f = ex ? Object.assign({}, ex, { assignees: ex.assignees.slice() })
+    : { id: '', part: isAdmin() ? ui.workPart || myPart : myPart, title: '', category: '개발', startDate: d0, endDate: d0, time: '', assignees: [S.me.email], status: '예정', visibility: 'all', memo: '' };
+  const m = openModal(`
+    <header><h3>${ex ? '업무 일정 수정' : '업무 일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="field"><label>파트 <span class="req">*</span></label>${isAdmin() && !ex
+        ? `<select name="part"><option value="">— 파트 선택 —</option>${PARTS.map((p) => `<option ${f.part === p ? 'selected' : ''}>${p}</option>`).join('')}</select>`
+        : `<input value="${esc(f.part)}" disabled>`}</div>
+      <div class="field"><label>제목 <span class="req">*</span></label><input name="title" maxlength="60" value="${esc(f.title)}" placeholder="예: 10월 정기배포, 앱 3.2 회귀 테스트"></div>
+      <div class="field"><label>분류 <span class="req">*</span></label>
+        <div class="seg">${TASK_CATS.map((c, i) => `<button type="button" data-cat="${esc(c)}" class="${f.category === c ? 'on' : ''}"><i class="dot k-${i}"></i>${c}</button>`).join('')}</div></div>
+      <div class="row2">
+        <div class="field"><label>시작일 <span class="req">*</span></label><input type="date" name="startDate" value="${f.startDate}"></div>
+        <div class="field"><label>종료일</label><input type="date" name="endDate" value="${f.endDate}" min="${f.startDate}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>시간 <span class="muted" style="font-weight:400">선택</span></label><input name="time" maxlength="30" value="${esc(f.time)}" placeholder="예: 14:00~16:00"></div>
+        <div class="field"><label>상태</label><select name="status">${TASK_STATUS.map((st) => `<option ${f.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div></div>
+      <div class="field"><label>공개 범위</label><div class="seg">
+        <button type="button" data-vis="all" class="${f.visibility !== 'part' ? 'on' : ''}">전체 공개</button>
+        <button type="button" data-vis="part" class="${f.visibility === 'part' ? 'on' : ''}">파트 내부만</button></div></div>
+      <div class="field"><label>메모</label><textarea name="memo" rows="3" maxlength="300" placeholder="링크, 참고사항">${esc(f.memo)}</textarea></div>
+    </div>
+    <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span>
+      <button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '등록'}</button></footer>`);
+  const q = (sel) => m.querySelector(sel);
+  const box = q('[data-assignees]');
+  renderAssignees(box, f.assignees, f.part);
+  m.querySelectorAll('[data-cat]').forEach((b) => (b.onclick = () => { f.category = b.dataset.cat; m.querySelectorAll('[data-cat]').forEach((x) => x.classList.toggle('on', x === b)); }));
+  m.querySelectorAll('[data-vis]').forEach((b) => (b.onclick = () => { f.visibility = b.dataset.vis; m.querySelectorAll('[data-vis]').forEach((x) => x.classList.toggle('on', x === b)); }));
+  if (q('select[name=part]')) q('select[name=part]').onchange = (e) => { f.part = e.target.value; renderAssignees(box, f.assignees, f.part); };
+  const sd = q('[name=startDate]'), ed = q('[name=endDate]');
+  sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; };
+  if (ex) q('[data-del]').onclick = () => removeTask(ex.id);
+  q('[data-save]').onclick = () => runTasks(api('saveTask', {
+    id: f.id, part: f.part, title: q('[name=title]').value, category: f.category,
+    startDate: sd.value, endDate: ed.value || sd.value, time: q('[name=time]').value, status: q('[name=status]').value,
+    assignees: f.assignees, visibility: f.visibility, memo: q('[name=memo]').value,
+  }), ex ? '수정했습니다.' : '업무 일정을 등록했습니다.');
+}
+
+async function removeTask(id) {
+  const t = W.tasks.find((x) => x.id === id);
+  if (!t) return;
+  const ok = await confirmBox('업무 일정 삭제', `<p>[${esc(t.part)}] ${esc(t.title)} · ${fmtRange(t)}<br>삭제할까요?</p>`, '삭제', true);
+  if (ok) runTasks(api('deleteTask', id), '삭제했습니다.');
 }
 
 /* ---------- 중요 일정 (등록·수정은 PM, 보기는 전체) ---------- */
@@ -1562,6 +1807,7 @@ async function run(promise, okMsg, after) {
 }
 
 async function boot() {
+  W.loaded = false; W.tasks = []; W.error = '';
   screen = 'loading'; render();
   const fromUrl = await readUrlToken();
   if (fromUrl) { urlToken = true; if (!getToken()) setToken(fromUrl); }
@@ -1623,6 +1869,17 @@ document.addEventListener('click', (e) => {
     case 'resetPw': resetPw(v); break;
     case 'newHoliday': openHolidayForm(); break;
     case 'newEvent': openEventForm(null, v); break;
+    case 'wpart': ui.workPart = v; render(); break;
+    case 'wmonth': {
+      const t0 = new Date();
+      ui.workMonth = v === '0' ? new Date(t0.getFullYear(), t0.getMonth(), 1) : new Date(ui.workMonth.getFullYear(), ui.workMonth.getMonth() + Number(v), 1);
+      render(); break;
+    }
+    case 'wday': openWorkDay(v); break;
+    case 'newTask': openTaskForm(null, v); break;
+    case 'editTask': openTaskForm(v); break;
+    case 'delTask': removeTask(v); break;
+    case 'reloadTasks': W.error = ''; loadTasks(true); render(); break;
     case 'editEvent': openEventForm(v); break;
     case 'delEvent': removeEvent(v); break;
     case 'delHoliday': confirmBox('공휴일 삭제', `<p>${fmtShort(v)} ${esc(D.holidays[v] || '')}을(를) 삭제할까요?</p>`, '삭제', true).then((ok) => ok && run(api('deleteHoliday', v), '삭제했습니다.')); break;
@@ -1630,7 +1887,7 @@ document.addEventListener('click', (e) => {
     case 'clearMonth': ui.allFilter.month = ''; render(); break;
     case 'account': openAccount(); break;
     case 'copyAttendance': copyText(attendanceText(v)); break;
-    case 'logout': setToken(''); syncUrlToken(''); S = null; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
+    case 'logout': setToken(''); syncUrlToken(''); S = null; W.loaded = false; W.tasks = []; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
     case 'reload': boot(); break;
     case 'reset': Mock._reset(); setToken(Mock._tokenFor('lead@example.com')); boot(); break;
   }
@@ -1642,6 +1899,7 @@ document.addEventListener('change', (e) => {
   switch (t.dataset.act) {
     case 'mineOnly': ui.mineOnly = t.checked; render(); break;
     case 'part': ui.part = t.value; ui.allFilter.member = ''; render(); break;
+    case 'wmine': ui.workMine = t.checked; render(); break;
     case 'filter': ui.allFilter[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; render(); break;
     case 'switch':
       if (t.value === '__setup') { Mock._empty(); setToken(''); }
