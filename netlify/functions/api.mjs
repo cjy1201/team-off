@@ -24,11 +24,29 @@ async function forward(body) {
   return text;
 }
 
+/** GET /api?q=… 로 온 요청 내용 복원 (회사망이 POST를 막을 때 화면이 GET으로 보낸다) */
+function fromB64Url(q) {
+  const b64 = q.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+async function readBody(request) {
+  if (request.method === 'POST') return request.text();
+  if (request.method === 'GET') {
+    const q = new URL(request.url).searchParams.get('q');
+    if (q) return fromB64Url(q);
+  }
+  return null;
+}
+
 export default async (req) => {
-  if (req.method !== 'POST') return json({ ok: false, error: 'POST만 허용됩니다.' }, 405);
-  const body = await req.text();
-  let fn = '';
-  try { fn = String(JSON.parse(body).fn || ''); } catch (e) { return json({ ok: false, error: '요청 형식이 올바르지 않습니다.' }, 400); }
+  let body, fn = '';
+  try {
+    body = await readBody(req);
+    if (body === null) return json({ ok: false, error: 'POST만 허용됩니다.' }, 405);
+    fn = String(JSON.parse(body).fn || '');
+  } catch (e) { return json({ ok: false, error: '요청 형식이 올바르지 않습니다.' }, 400); }
 
   const tries = READ_ONLY.has(fn) ? 3 : 1;
   for (let i = 1; i <= tries; i++) {

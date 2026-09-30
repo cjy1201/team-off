@@ -370,12 +370,48 @@ function callBridge(fn, args) {
 // 조회만 하는 요청 — 응답을 못 받으면 자동으로 다시 보내도 안전하다
 const READ_ONLY = { getBootstrap: true, checkLeave: true };
 
+/*
+ * 회사망(모개망)은 외부 사이트로 가는 POST 요청을 보안 장비가 가로채서 안내 문구로 바꿔치기한다.
+ * /api 전달을 쓸 때 POST 응답이 JSON이 아니면 GET(/api?q=요청내용)으로 다시 보내고, 이 기기는 이후 계속 GET을 쓴다.
+ * (가로채진 POST는 서버에 도달하지 않았으므로 다시 보내도 중복 처리되지 않는다)
+ */
+const GET_KEY = 'team-off-use-get';
+let useGet = false;
+try { useGet = localStorage.getItem(GET_KEY) === '1'; } catch (e) {}
+
+/** 문자열(한글 포함) → URL에 넣을 수 있는 base64url */
+function toB64Url(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).split('+').join('-').split('/').join('_').replace(/=+$/, ''); // 정규식에 슬래시 두 개가 연달아 들어가면 Apps Script가 주석으로 잘라낸다
+}
+
 function fetchOnce(fn, args) {
   const lost = () => { const e = new Error('lost'); e.lost = true; throw e; };
-  // text/plain 으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 바로 보낸다
-  return fetch(USE_PROXY ? PROXY_URL : API_URL, { method: 'POST', body: JSON.stringify({ fn, args }) })
-    .then((r) => (r.ok ? r.json() : lost()), lost)
-    .then((res) => {
+  const payload = JSON.stringify({ fn, args });
+  const viaGet = USE_PROXY && useGet;
+  // POST는 text/plain 으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 바로 보낸다
+  const req = viaGet
+    ? fetch(PROXY_URL + '?q=' + toB64Url(payload), { cache: 'no-store' })
+    : fetch(USE_PROXY ? PROXY_URL : API_URL, { method: 'POST', body: payload });
+  return req
+    .then((r) => r.text().then((text) => ({ r, text })), lost)
+    .then(({ r, text }) => {
+      let res = null;
+      try { res = JSON.parse(text); } catch (e) {}
+      if (!res || typeof res !== 'object') {
+        if (!r.ok && !USE_PROXY) lost();
+        // 우리 서버 응답이 아님 → 중간에서 가로챔
+        if (USE_PROXY && !viaGet) {
+          useGet = true;
+          try { localStorage.setItem(GET_KEY, '1'); } catch (e) {}
+          return fetchOnce(fn, args);
+        }
+        const snippet = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
+        throw new Error(`네트워크에서 요청이 차단되었습니다 (HTTP ${r.status}). 받은 내용: ${snippet || '(없음)'}`);
+      }
+      if (r.status === 502 || (!r.ok && !USE_PROXY)) lost();
       if (!res.ok) throw new Error(res.error);
       return res.data;
     });
