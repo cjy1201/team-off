@@ -1,0 +1,5 @@
+# Cloudflare Pages 응답 헤더: 화면 파일은 새 버전이 바로 보이도록
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache

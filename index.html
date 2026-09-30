@@ -299,6 +299,10 @@ const MODE = IS_GAS ? 'gas' : /^https?:$/.test(location.protocol) && !/preview/.
 // 주의: Apps Script가 이 파일을 내보낼 때 문자열 속 슬래시 두 개를 주석으로 잘라내므로 주소를 조각으로 조립한다
 const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzzzEiIUU3mQzt';
 const API_URL = ['https:', '', 'script.google.com', 'macros', 's', DEPLOY_ID, 'exec'].join('/');
+// Cloudflare Pages·Netlify에 올렸을 때: 같은 사이트의 /api (Pages Function / Netlify Function)가 서버에서 Apps Script로 대신 전달한다.
+// 회사망처럼 브라우저가 구글과 직접 통신할 수 없는 곳에서도 동작한다.
+const USE_PROXY = MODE === 'api' && /\.(pages\.dev|netlify\.app)$/.test(location.hostname);
+const PROXY_URL = '/api';
 
 function call(fn, ...args) {
   if (MODE === 'gas') {
@@ -321,7 +325,8 @@ const bridge = { win: null, origin: '', ready: null, broken: false, seq: 0, pend
 function initBridge() {
   if (bridge.ready) return bridge.ready;
   bridge.ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { bridge.broken = true; reject(new Error('bridge timeout')); }, 20000);
+    const fail = () => { bridge.broken = true; reject(new Error('bridge timeout')); };
+    const timer = setTimeout(fail, 15000);
     window.addEventListener('message', (ev) => {
       const d = ev.data;
       let host = '';
@@ -330,6 +335,8 @@ function initBridge() {
       if (d.type === 'teamoff-ready') {
         bridge.win = ev.source; bridge.origin = ev.origin;
         clearTimeout(timer); resolve();
+      } else if (d.type === 'teamoff-broken') {
+        clearTimeout(timer); fail(); // 통신용 페이지는 떴지만 구글 서버와 통신이 안 됨 (회사망 등)
       } else if (d.type === 'teamoff-reply' && bridge.pending[d.id]) {
         const p = bridge.pending[d.id];
         delete bridge.pending[d.id];
@@ -360,21 +367,34 @@ function callBridge(fn, args) {
   }));
 }
 
-function callFetch(fn, args) {
+// 조회만 하는 요청 — 응답을 못 받으면 자동으로 다시 보내도 안전하다
+const READ_ONLY = { getBootstrap: true, checkLeave: true };
+
+function fetchOnce(fn, args) {
+  const lost = () => { const e = new Error('lost'); e.lost = true; throw e; };
   // text/plain 으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 바로 보낸다
-  return fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }) })
-    .then((r) => {
-      if (!r.ok) throw new Error(`서버 오류가 발생했습니다. (${r.status})`);
-      return r.json();
-    }, () => { throw new Error('서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요.'); })
+  return fetch(USE_PROXY ? PROXY_URL : API_URL, { method: 'POST', body: JSON.stringify({ fn, args }) })
+    .then((r) => (r.ok ? r.json() : lost()), lost)
     .then((res) => {
       if (!res.ok) throw new Error(res.error);
       return res.data;
     });
 }
 
+/** fetch 방식: 구글 응답 전달(echo)이 가끔 응답을 잃어버려서 조회는 최대 3번 시도 */
+function callFetch(fn, args, attempt = 1) {
+  return fetchOnce(fn, args).catch((e) => {
+    if (!e.lost) throw e;
+    if (READ_ONLY[fn] && attempt < 3) return new Promise((r) => setTimeout(r, 700 * attempt)).then(() => callFetch(fn, args, attempt + 1));
+    if (READ_ONLY[fn]) throw new Error('서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.');
+    // 저장 요청은 서버에서 이미 처리됐을 수 있어 다시 보내지 않고, 화면만 새로 불러온다
+    setTimeout(() => { if (screen === 'app') call('getBootstrap', getToken()).then((b) => { if (b.state) { S = b.state; render(); } }).catch(() => {}); }, 300);
+    throw new Error('서버 응답을 받지 못했습니다. 반영됐을 수 있으니 목록을 확인한 뒤 필요하면 다시 시도하세요.');
+  });
+}
+
 function callApi(fn, args) {
-  if (bridge.broken) return callFetch(fn, args);
+  if (USE_PROXY || bridge.broken) return callFetch(fn, args);
   return callBridge(fn, args).catch((e) => {
     if (e.message === 'bridge timeout') return callFetch(fn, args); // 통신용 페이지가 안 뜨면 fetch로
     throw e;
@@ -456,7 +476,7 @@ const Mock = (() => {
       const s = l.startDate > m.startDate ? l.startDate : m.startDate, e = l.endDate < m.endDate ? l.endDate : m.endDate;
       const when = fmtRange({ startDate: s, endDate: e }) + (m.type === '오전반차' ? ' 오전' : m.type === '오후반차' ? ' 오후' : '');
       if (l.substitutes.includes(m.email)) out.push(`대직자 ${nameOf(m.email)}님이 ${when} 부재`);
-      else if (m.substitutes.includes(l.email)) out.push(`${nameOf(m.email)}님이 나를 대직자로 지정했는데 ${when} 둘 다 부재`);
+      else if (m.substitutes.includes(l.email)) out.push(`${nameOf(m.email)}님이 ${nameOf(l.email)}님을 대직자로 지정했는데 ${when} 둘 다 부재`);
     });
     return out;
   };

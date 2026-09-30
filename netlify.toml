@@ -1,0 +1,10 @@
+# Netlify 설정: GitHub 저장소를 연결하면 이 파일을 읽어서 배포한다
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# 화면 파일은 바로 새 버전이 보이도록 캐시를 짧게
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
