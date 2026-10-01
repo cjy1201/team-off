@@ -838,6 +838,11 @@ function render() {
 }
 
 function previewBar() {
+  // DB 전환 전 확인용 미리보기 주소(d1-preview.…pages.dev)에서는 안내 막대
+  if (MODE === 'api' && /^d1-preview\./.test(location.hostname)) {
+    return `<div class="preview-bar" style="background:#92400e"><b>DB 전환 미리보기</b>
+      <span>새 DB에서 읽는 확인용 화면입니다. 여기서 저장한 내용은 전환할 때 사라지니 확인만 해주세요. 직원들에게는 공유하지 마세요.</span></div>`;
+  }
   if (MODE !== 'mock') return '';
   const db = Mock._db();
   const cur = db.users.find((u) => Mock._tokenFor(u.email) === getToken());

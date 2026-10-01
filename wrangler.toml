@@ -14,3 +14,13 @@ BACKEND = "gas"
 binding = "DB"
 database_name = "team-off"
 database_id = "ec63100e-32ca-42a6-b8db-b417f641992b"
+
+# 미리보기 배포(main 이외 브랜치, 예: d1-preview.super-sol.pages.dev) — DB 전환 전 직접 확인용
+# 실제 사이트(production)는 위 설정(BACKEND="gas")을 그대로 쓴다
+[env.preview.vars]
+BACKEND = "d1"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "team-off"
+database_id = "ec63100e-32ca-42a6-b8db-b417f641992b"
