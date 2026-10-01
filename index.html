@@ -1490,7 +1490,25 @@ function viewMembers() {
       <button class="btn primary" data-act="newUser">+ 팀원 추가</button></span></div>
     <div class="infobox" style="margin:0 0 4px">팀원을 추가하면 <b>임시 비밀번호</b>가 발급됩니다. 사이트 주소·이메일·임시 비밀번호를 전달하면 첫 로그인 때 본인 비밀번호로 바꾸게 됩니다.<br>
       <b>PM</b> 전체 일정·관리 메뉴 &nbsp;·&nbsp; <b>PL</b> 전체 직원 일정 조회 &nbsp;·&nbsp; <b>파트원</b> 같은 파트 일정 조회 &nbsp;(PL·파트원은 본인 일정만 수정)</div>
+    ${backupBox()}
     ${groups.map(([title, list]) => `<div class="section-title">${esc(title)} <span class="muted small">${list.length}명</span></div><div class="list">${list.map(row).join('')}</div>`).join('')}`;
+}
+
+/** 마지막 백업 시각 (DB → 스프레드시트, 1시간마다). 3시간 넘게 없으면 경고 */
+const BK = { loaded: false, loading: false, at: '' };
+function backupBox() {
+  if (MODE !== 'api' || !USE_PROXY) return ''; // DB를 쓰는 주소에서만
+  if (!BK.loaded && !BK.loading) {
+    BK.loading = true;
+    api('getBackupInfo').then((r) => { BK.at = r.lastBackupAt || ''; }).catch(() => {}).finally(() => { BK.loaded = true; BK.loading = false; if (ui.tab === 'members') render(); });
+  }
+  if (!BK.loaded) return '<div class="infobox" style="margin:8px 0 0">스프레드시트 백업 상태 확인 중…</div>';
+  if (!BK.at) return '<div class="warnbox" style="margin:8px 0 0">스프레드시트 백업 기록이 없습니다. Apps Script에서 setupBackup을 한 번 실행해 주세요.</div>';
+  const d = new Date(BK.at);
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  const ago = mins < 60 ? `${mins}분 전` : mins < 1440 ? `${Math.floor(mins / 60)}시간 전` : `${Math.floor(mins / 1440)}일 전`;
+  const text = `마지막 스프레드시트 백업: ${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())} (${ago}) · 1시간마다 자동`;
+  return mins > 180 ? `<div class="warnbox" style="margin:8px 0 0">⚠ ${text} — 백업이 3시간 넘게 되지 않았습니다.</div>` : `<div class="infobox" style="margin:8px 0 0">${text}</div>`;
 }
 
 /* ---------- 공휴일 (관리자) ---------- */
