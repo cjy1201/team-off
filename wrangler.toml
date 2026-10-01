@@ -9,6 +9,7 @@ compatibility_flags = ["nodejs_compat"]   # DB 서버(site/lib)가 node:crypto �
 #   MAINTENANCE = "readonly" → 저장 요청만 잠시 막음 (전환 순간)
 [vars]
 BACKEND = "gas"
+MAINTENANCE = "readonly"
 
 [[d1_databases]]
 binding = "DB"
