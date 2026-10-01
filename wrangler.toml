@@ -8,8 +8,7 @@ compatibility_flags = ["nodejs_compat"]   # DB 서버(site/lib)가 node:crypto �
 #   BACKEND     = "gas" → Apps Script로 전달 / "d1" → DB에서 직접 처리
 #   MAINTENANCE = "readonly" → 저장 요청만 잠시 막음 (전환 순간)
 [vars]
-BACKEND = "gas"
-MAINTENANCE = "readonly"
+BACKEND = "d1"
 
 [[d1_databases]]
 binding = "DB"
