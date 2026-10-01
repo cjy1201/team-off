@@ -700,8 +700,9 @@ const Mock = (() => {
     getTasks(token) {
       const u = auth(token);
       const pm = u.role === 'pm';
-      const editable = (t) => pm || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part);
-      return { tasks: (db.tasks || []).filter((t) => t.visibility !== 'part' || pm || u.part === t.part).map((t) => ({ ...t, canEdit: editable(t), absences: this._absences(u, t) })) };
+      const editable = (t) => (t.visibility === 'private' ? t.createdBy === u.email : pm || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part));
+      const visible = (t) => (t.visibility === 'private' ? t.createdBy === u.email : t.visibility !== 'part' || pm || u.part === t.part);
+      return { tasks: (db.tasks || []).filter(visible).map((t) => ({ ...t, canEdit: editable(t), absences: this._absences(u, t) })) };
     },
     checkTaskAbsence(token, i) {
       const u = auth(token);
@@ -713,13 +714,15 @@ const Mock = (() => {
       const pm = u.role === 'pm';
       db.tasks = db.tasks || [];
       const ex = i.id ? db.tasks.find((t) => t.id === i.id) : null;
-      if (ex) need(pm || ex.createdBy === u.email || (u.role === 'pl' && u.part === ex.part), '작성자, 해당 파트 PL, PM만 수정할 수 있습니다.');
+      if (ex) need(ex.visibility === 'private' ? ex.createdBy === u.email : pm || ex.createdBy === u.email || (u.role === 'pl' && u.part === ex.part), '작성자, 해당 파트 PL, PM만 수정할 수 있습니다.');
+      const vis = ['all', 'part', 'private'].includes(i.visibility) ? i.visibility : 'all';
+      need(vis !== 'private' || (ex ? ex.createdBy : u.email) === u.email, "'나만 보기'는 등록한 사람만 설정할 수 있습니다.");
       const part = pm ? i.part : ex ? ex.part : u.part;
       need(PARTS.includes(part), pm ? '파트를 선택하세요.' : '파트가 지정되지 않은 계정입니다.');
       need((i.title || '').trim(), '제목을 입력하세요.');
       need(i.startDate && (i.endDate || i.startDate) >= i.startDate, '날짜를 확인하세요.');
       const row = { id: ex ? ex.id : 'T' + Date.now(), part, title: i.title.trim(), category: i.category, startDate: i.startDate, endDate: i.endDate || i.startDate,
-        time: i.time || '', assignees: (i.assignees || []).slice(0, 10), status: i.status || '예정', visibility: i.visibility === 'part' ? 'part' : 'all', memo: i.memo || '', createdBy: ex ? ex.createdBy : u.email };
+        time: i.time || '', assignees: vis === 'private' ? [ex ? ex.createdBy : u.email] : (i.assignees || []).slice(0, 10), status: i.status || '예정', visibility: vis, memo: i.memo || '', createdBy: ex ? ex.createdBy : u.email };
       db.tasks = db.tasks.filter((t) => t.id !== row.id).concat([row]); persist();
       return this.getTasks(token);
     },
@@ -727,7 +730,7 @@ const Mock = (() => {
       const u = auth(token);
       const t = (db.tasks || []).find((x) => x.id === id);
       need(t, '이미 삭제된 업무 일정입니다.');
-      need(u.role === 'pm' || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part), '작성자, 해당 파트 PL, PM만 삭제할 수 있습니다.');
+      need(t.visibility === 'private' ? t.createdBy === u.email : u.role === 'pm' || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part), '작성자, 해당 파트 PL, PM만 삭제할 수 있습니다.');
       db.tasks = db.tasks.filter((x) => x.id !== id); persist();
       return this.getTasks(token);
     },
@@ -1124,7 +1127,7 @@ function taskItem(t) {
       <div class="title"><span class="badge">${esc(t.part)}</span> ${esc(t.title)}
         <span class="muted small" style="font-weight:500">${fmtRange(t)}${t.time ? ' ' + esc(t.time) : ''}</span>
         ${late ? '<span class="badge overdue">기한 지남</span>' : t.status === '지연' ? '<span class="badge overdue">지연</span>' : ''}</div>
-      <div class="meta">${esc(t.category)}${t.canEdit ? '' : ' · ' + esc(t.status)}${names ? ' · 담당 ' + names : ''}${t.visibility === 'part' ? ' · 파트 내부' : ''}</div>
+      <div class="meta">${esc(t.category)}${t.canEdit ? '' : ' · ' + esc(t.status)}${names ? ' · 담당 ' + names : ''}${t.visibility === 'part' ? ' · 파트 내부' : t.visibility === 'private' ? ' · <b>나만 보기</b>' : ''}</div>
       ${t.memo ? `<div class="meta" style="white-space:pre-wrap">${esc(t.memo)}</div>` : ''}
       ${(t.absences || []).length ? `<div class="absent-box">⚠ 담당자 부재: ${t.absences.map(esc).join(', ')}</div>` : ''}
     </div>
@@ -1286,6 +1289,7 @@ function openTaskForm(id, date) {
   const myPart = S.me.part || '';
   if (!ex && !isAdmin() && !myPart) return toast('파트가 지정되지 않은 계정입니다. PM에게 파트 지정을 요청하세요.', true);
   const d0 = date || todayStr();
+  const mine = !ex || ex.createdBy === S.me.email; // '나만 보기'는 등록한 사람만 설정 가능
   const f = ex ? Object.assign({}, ex, { assignees: ex.assignees.slice() })
     : { id: '', part: isAdmin() ? ui.workPart || myPart : myPart, title: '', category: '개발', startDate: d0, endDate: d0, time: '', assignees: [S.me.email], status: '예정', visibility: 'all', memo: '' };
   const m = openModal(`
@@ -1305,10 +1309,12 @@ function openTaskForm(id, date) {
         <div class="field"><label>시간 <span class="muted" style="font-weight:400">선택</span></label><input name="time" maxlength="30" value="${esc(f.time)}" placeholder="예: 14:00~16:00"></div>
         <div class="field"><label>상태</label><select name="status">${TASK_STATUS.map((st) => `<option ${f.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
       </div>
-      <div class="field"><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div><div data-absent></div></div>
       <div class="field"><label>공개 범위</label><div class="seg">
-        <button type="button" data-vis="all" class="${f.visibility !== 'part' ? 'on' : ''}">전체 공개</button>
-        <button type="button" data-vis="part" class="${f.visibility === 'part' ? 'on' : ''}">파트 내부만</button></div></div>
+        <button type="button" data-vis="all" class="${f.visibility !== 'part' && f.visibility !== 'private' ? 'on' : ''}">전체 공개</button>
+        <button type="button" data-vis="part" class="${f.visibility === 'part' ? 'on' : ''}">파트 내부만</button>
+        ${mine ? `<button type="button" data-vis="private" class="${f.visibility === 'private' ? 'on' : ''}">나만 보기</button>` : ''}</div>
+        <div class="muted small" data-vishelp style="margin-top:4px"></div></div>
+      <div class="field" data-afield><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div><div data-absent></div></div>
       <div class="field"><label>메모</label><textarea name="memo" rows="3" maxlength="300" placeholder="링크, 참고사항">${esc(f.memo)}</textarea></div>
     </div>
     <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span>
@@ -1331,7 +1337,14 @@ function openTaskForm(id, date) {
   renderA();
   checkAbsent();
   m.querySelectorAll('[data-cat]').forEach((b) => (b.onclick = () => { f.category = b.dataset.cat; m.querySelectorAll('[data-cat]').forEach((x) => x.classList.toggle('on', x === b)); }));
-  m.querySelectorAll('[data-vis]').forEach((b) => (b.onclick = () => { f.visibility = b.dataset.vis; m.querySelectorAll('[data-vis]').forEach((x) => x.classList.toggle('on', x === b)); }));
+  // 공개 범위: '나만 보기'면 담당자 칸을 숨긴다 (담당자는 본인으로 고정, 서버도 같은 규칙)
+  const VIS_HELP = { all: '모든 직원이 볼 수 있습니다.', part: '우리 파트 직원과 PM만 볼 수 있습니다.', private: '나만 볼 수 있습니다. PM·PL도 볼 수 없고, 담당자는 본인으로 고정됩니다.' };
+  const syncVis = () => {
+    q('[data-afield]').style.display = f.visibility === 'private' ? 'none' : '';
+    q('[data-vishelp]').textContent = VIS_HELP[f.visibility] || VIS_HELP.all;
+  };
+  m.querySelectorAll('[data-vis]').forEach((b) => (b.onclick = () => { f.visibility = b.dataset.vis; m.querySelectorAll('[data-vis]').forEach((x) => x.classList.toggle('on', x === b)); syncVis(); }));
+  syncVis();
   if (q('select[name=part]')) q('select[name=part]').onchange = (e) => { f.part = e.target.value; renderA(); };
   const sd = q('[name=startDate]'), ed = q('[name=endDate]');
   sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; checkAbsent(); };
@@ -1340,7 +1353,7 @@ function openTaskForm(id, date) {
   q('[data-save]').onclick = () => runTasks(api('saveTask', {
     id: f.id, part: f.part, title: q('[name=title]').value, category: f.category,
     startDate: sd.value, endDate: ed.value || sd.value, time: q('[name=time]').value, status: q('[name=status]').value,
-    assignees: f.assignees, visibility: f.visibility, memo: q('[name=memo]').value,
+    assignees: f.visibility === 'private' ? [S.me.email] : f.assignees, visibility: f.visibility, memo: q('[name=memo]').value,
   }), ex ? '수정했습니다.' : '업무 일정을 등록했습니다.');
 }
 
