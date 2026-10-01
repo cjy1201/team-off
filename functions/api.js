@@ -2,6 +2,11 @@
 // 회사망처럼 브라우저가 구글과 직접 통신할 수 없는 환경에서도, Cloudflare 서버가 대신 요청해서 동작하게 한다.
 // 요청/응답 형식은 Apps Script doPost와 같다: {"fn": "...", "args": [...]} → {"ok": true, "data": ...}
 // (Netlify용 netlify/functions/api.mjs 와 같은 동작)
+//
+// 환경 변수(wrangler.toml [vars] 또는 Cloudflare 대시보드)로 동작을 바꾼다:
+//   BACKEND = 'gas' (기본) → Apps Script로 전달 / 'd1' → Cloudflare DB(D1)에서 직접 처리 (Code.gs 로직 그대로)
+//   MAINTENANCE = 'readonly' → 저장 요청만 잠시 막음 (DB 전환 순간에 사용)
+import { handleD1 } from '../lib/d1-backend.js';
 
 const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzzzEiIUU3mQzt';
 
@@ -49,6 +54,21 @@ export async function onRequest({ request, env }) {
     fn = String(JSON.parse(body).fn || '');
   } catch (e) { return json({ ok: false, error: '요청 형식이 올바르지 않습니다.' }, 400); }
 
+  if (env && env.MAINTENANCE === 'readonly' && !READ_ONLY.has(fn)) {
+    return json({ ok: false, error: '잠시 점검 중입니다. 1~2분 뒤 다시 시도해 주세요.' });
+  }
+
+  // DB 서버
+  if (env && env.BACKEND === 'd1' && env.DB) {
+    try {
+      return new Response(await handleD1(env.DB, body), { headers: HEADERS });
+    } catch (e) {
+      console.log(`[api:d1] ${fn} 오류: ${e && e.stack}`);
+      return json({ ok: false, error: '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.' }, 500);
+    }
+  }
+
+  // Apps Script로 전달
   // 조회, 그리고 요청 ID(rid)가 붙은 저장 요청은 다시 보내도 서버가 한 번만 처리하므로 3번까지 시도
   let rid = '';
   try { rid = String(JSON.parse(body).rid || ''); } catch (e) {}

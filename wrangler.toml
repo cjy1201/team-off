@@ -1,0 +1,16 @@
+# Cloudflare Pages 설정 (GitHub 연결 배포 시 이 파일을 읽는다)
+name = "super-sol"
+pages_build_output_dir = "."
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]   # DB 서버(site/lib)가 node:crypto 사용
+
+# /api 동작 스위치 (functions/api.js 참고)
+#   BACKEND     = "gas" → Apps Script로 전달 / "d1" → DB에서 직접 처리
+#   MAINTENANCE = "readonly" → 저장 요청만 잠시 막음 (전환 순간)
+[vars]
+BACKEND = "gas"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "team-off"
+database_id = "ec63100e-32ca-42a6-b8db-b417f641992b"
