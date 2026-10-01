@@ -185,6 +185,8 @@
   .chip.cover { opacity: .85; background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.18) 6px 12px); }
   .toggle.remember { align-items: flex-start; margin-top: 14px; color: var(--text); }
   .toggle.remember input { margin-top: 3px; }
+  .ghost-btn { border-color: transparent; background: transparent; color: var(--muted); font-size: 18px; }
+  .ghost-btn.spin { animation: spin .8s linear infinite; }
   .whoami.btn { padding: 4px 8px; font-weight: 500; }
   /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 기타) */
   .k-0 { background: #4f46e5; } .k-1 { background: #dc2626; } .k-2 { background: #d97706; }
@@ -848,7 +850,9 @@ function render() {
     <header class="top"><div class="top-inner">
       <div class="brand">
         <h1>슈퍼쏠 전담반 일정</h1>
-        <button class="whoami btn ghost sm" data-act="account">${esc(S.me.name)} <span class="badge ${canSeeTeam() ? 'admin' : ''}">${esc(roleLabel(S.me))}</span> ▾</button>
+        <span style="display:flex;align-items:center;gap:2px">
+        <button class="icon-btn ghost-btn" data-act="refresh" title="최신 내용 불러오기" aria-label="최신 내용 불러오기">↻</button>
+        <button class="whoami btn ghost sm" data-act="account">${esc(S.me.name)} <span class="badge ${canSeeTeam() ? 'admin' : ''}">${esc(roleLabel(S.me))}</span> ▾</button></span>
       </div>
       <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}</button>`).join('')}</nav>
     </div></header>
@@ -1087,7 +1091,7 @@ async function runTasks(promise, okMsg) {
   loading(true);
   try {
     const r = await promise;
-    W.tasks = r.tasks || []; W.loaded = true;
+    W.tasks = r.tasks || []; W.loaded = true; stateSeq++;
     closeModal(); render();
     if (okMsg) toast(okMsg);
   } catch (e) {
@@ -1974,7 +1978,7 @@ async function run(promise, okMsg, after) {
   try {
     const res = await promise;
     if (res.token) { setToken(res.token); if (urlToken) syncUrlToken(res.token); } // 비밀번호 변경 시 주소의 로그인 정보도 교체
-    if (res.state) { S = res.state; screen = 'app'; }
+    if (res.state) { S = res.state; screen = 'app'; stateSeq++; lastRefresh = Date.now(); }
     closeModal();
     render();
     if (okMsg) toast(okMsg);
@@ -1999,7 +2003,7 @@ async function boot() {
       if (fromUrl && getToken() !== fromUrl) { setToken(fromUrl); return boot(); }
       setToken(''); if (urlToken) syncUrlToken(''); screen = 'login';
     }
-    else { S = res.state; screen = 'app'; }
+    else { S = res.state; screen = 'app'; stateSeq++; lastRefresh = Date.now(); }
     render();
   }).catch((e) => { screen = 'error'; screenMsg = (e && e.message) || String(e); render(); });
 }
@@ -2069,6 +2073,7 @@ document.addEventListener('click', (e) => {
     case 'holYear': ui.holYear += Number(v); render(); break;
     case 'clearMonth': ui.allFilter.month = ''; render(); break;
     case 'account': openAccount(); break;
+    case 'refresh': refreshData(true); break;
     case 'copyAttendance': copyText(attendanceText(v)); break;
     case 'logout': setToken(''); syncUrlToken(''); S = null; W.loaded = false; W.tasks = []; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
     case 'reload': boot(); break;
@@ -2104,6 +2109,61 @@ window.addEventListener('resize', () => {
   const m = window.matchMedia('(max-width: 640px)').matches;
   if (m !== lastMobile) { lastMobile = m; if (screen === 'app' && ui.tab === 'cal') render(); }
 });
+
+/* =========================================================
+   자동 새로고침 — 다른 사람이 바꾼 내용이 새로고침 없이 보이도록
+   - 앱으로 돌아올 때(탭·앱 전환) 마지막 갱신 후 5분이 지났으면, 화면에 떠 있는 동안 10분마다, ↻ 버튼(즉시)
+   - 실제로 바뀐 게 있을 때만 다시 그리고 스크롤 위치 유지. 열려 있는 등록 창은 그대로 둔다
+   - 새로고침 도중 내가 저장하면(stateSeq 변경) 그 새로고침 결과는 버린다 (옛 데이터로 덮어쓰지 않게)
+   ========================================================= */
+let stateSeq = 0;
+let lastRefresh = 0;
+let refreshing = false;
+const REFRESH_EVERY = 10 * 60000; // 화면에 떠 있는 동안 10분마다
+const REFRESH_ON_RETURN = 5 * 60000; // 앱으로 돌아왔을 때 마지막 갱신 후 5분이 지났으면 새로고침
+
+async function refreshData(manual) {
+  if (refreshing || screen !== 'app' || !S || MOVED) return;
+  refreshing = true;
+  const seq = stateSeq;
+  const btn = document.querySelector('[data-act="refresh"]');
+  if (manual && btn) btn.classList.add('spin');
+  let changed = false;
+  try {
+    const b = await call('getBootstrap', getToken());
+    if (b.needLogin) { setToken(''); S = null; screen = 'login'; render(); return; }
+    if (b.state && seq === stateSeq && JSON.stringify(b.state) !== JSON.stringify(S)) { S = b.state; changed = true; }
+    if (W.loaded && seq === stateSeq) {
+      const t = await api('getTasks');
+      if (seq === stateSeq && JSON.stringify(t.tasks) !== JSON.stringify(W.tasks)) { W.tasks = t.tasks || []; changed = true; }
+    }
+    lastRefresh = Date.now();
+    if (changed) {
+      const y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+    }
+    if (manual) toast(changed ? '최신 내용으로 업데이트했습니다.' : '이미 최신 내용입니다.');
+  } catch (e) {
+    if (manual) handleError(e);
+  } finally {
+    refreshing = false;
+    const b2 = document.querySelector('[data-act="refresh"]');
+    if (b2) b2.classList.remove('spin');
+  }
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - lastRefresh > REFRESH_ON_RETURN) refreshData(false);
+  });
+}
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('focus', () => { if (Date.now() - lastRefresh > REFRESH_ON_RETURN) refreshData(false); });
+}
+setInterval(() => {
+  if (typeof document === 'undefined' || document.visibilityState !== 'hidden') refreshData(false);
+}, REFRESH_EVERY);
 
 if (MODE === 'mock' && !getToken() && Mock._db().users.length) setToken(Mock._tokenFor('lead@example.com'));
 boot();
