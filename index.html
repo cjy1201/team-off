@@ -571,11 +571,14 @@ const Mock = (() => {
   };
   const state = (u) => {
     const pm = u.role === 'pm';
-    const visible = (l) => pm || u.role === 'pl' || u.viewAll || l.email === u.email || (u.part && partOfU(l.email) === u.part);
+    const leader = (e) => ['pm', 'pl'].includes((db.users.find((x) => x.email === e) || {}).role);
+    const mine = (l) => l.email === u.email || (u.part && partOfU(l.email) === u.part);
+    const visible = (l) => pm || u.role === 'pl' || u.viewAll || mine(l) || leader(l.email);
+    const brief = (l) => u.role === 'member' && !u.viewAll && !mine(l);
     return {
       me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll },
       users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll } : { email: x.email, name: x.name, part: x.part })),
-      leaves: db.leaves.filter(visible).map((l) => ({ ...l, conflicts: conflictsOf(l) })),
+      leaves: db.leaves.filter(visible).map((l) => (brief(l) ? { ...l, memo: '', conflicts: [] } : { ...l, conflicts: conflictsOf(l) })),
       holidays: db.holidays,
       events: db.events || [],
       designatedBy: [...new Set(db.leaves.filter((l) => l.substitutes.includes(u.email) && l.endDate >= todayStr()).map((l) => nameOf(l.email)))].sort(),
@@ -1029,7 +1032,7 @@ function viewCalendar() {
       <span><span style="color:var(--evt)">★</span> 중요 일정</span>
       <span><span style="color:var(--danger)">⚠</span> 대직자와 일정 겹침</span>
       ${canSeeTeam() ? '<span>↺ 내가 대직하는 일정</span>' : ''}
-      ${isAdmin() ? '' : canSeeAll() ? '<span>· 전체 직원 일정 (수정은 본인 일정만)</span>' : S.me.part ? `<span>· ${esc(S.me.part)} 파트 일정 (수정은 본인 일정만)</span>` : '<span>· 본인 일정만 표시됩니다</span>'}
+      ${isAdmin() ? '' : canSeeAll() ? '<span>· 전체 직원 일정 (수정은 본인 일정만)</span>' : S.me.part ? `<span>· ${esc(S.me.part)} 파트 일정 + PM·PL 일정 (수정은 본인 일정만)</span>` : '<span>· 본인 일정 + PM·PL 일정</span>'}
     </div>
     ${isAdmin() ? '' : designatedBox()}`;
 }
