@@ -103,7 +103,7 @@
   .cal-head div { padding: 8px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; border-bottom: 1px solid var(--border); }
   .cal-head div:first-child { color: var(--sun); }
   .cal-head div:last-child { color: var(--sat); }
-  .day { min-height: 112px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 4px; cursor: pointer; position: relative; min-width: 0; }
+  .day { min-height: 150px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 4px; cursor: pointer; position: relative; min-width: 0; }
   .day:nth-child(7n) { border-right: 0; }
   .day:hover { background: var(--surface-2); }
   .day.out { background: var(--bg); }
@@ -976,7 +976,7 @@ function viewCalendar() {
   const start = addDays(first, -first.getDay());
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
   const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
-  const maxChips = window.matchMedia('(max-width: 640px)').matches ? 5 : 4;
+  const maxChips = window.matchMedia('(max-width: 640px)').matches ? 5 : 6;
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(start, i);
@@ -1225,7 +1225,7 @@ function viewWork() {
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
   const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
   const mobile = window.matchMedia('(max-width: 640px)').matches;
-  const maxChips = mobile ? 5 : 4;
+  const maxChips = mobile ? 5 : 6;
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(start, i);
