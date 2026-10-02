@@ -42,6 +42,8 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
+  /* 모바일에서 화면 전체가 옆으로 밀리지 않게 (가로로 긴 표·타임라인은 각자 안에서 스크롤) */
+  html, body { overflow-x: clip; overscroll-behavior-x: none; }
   body {
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto Sans KR", sans-serif;
@@ -82,9 +84,9 @@
   .btn[disabled] { opacity: .5; cursor: default; }
 
   /* summary */
-  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .stat { padding: 12px 14px; }
-  .stat .label { font-size: 12px; color: var(--muted); }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .stat { padding: 12px 14px; min-width: 0; }
+  .stat .label { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
   .stat .sub { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat.warn .value { color: var(--danger); }
@@ -148,6 +150,7 @@
   /* modal */
   .overlay { position: fixed; inset: 0; background: rgba(15,17,21,.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
   .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 480px; max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 20px 40px rgba(0,0,0,.2); }
+  .modal.wide { max-width: 640px; }
   .modal header { padding: 16px 18px 8px; display: flex; justify-content: space-between; align-items: center; }
   .modal header h3 { margin: 0; font-size: 16px; }
   .modal .content { padding: 4px 18px 16px; }
@@ -177,7 +180,7 @@
   .btn.block { display: block; width: 100%; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; letter-spacing: 1px; }
   .chip.evt { background: var(--evt-bg); color: var(--evt); border: 1px solid var(--evt); font-weight: 600; }
-  .evt-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .evt-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
   .evt-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-left: 3px solid var(--evt); }
   .evt-item .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; min-width: 92px; }
   .evt-item .what { flex: 1; min-width: 0; }
@@ -636,7 +639,7 @@ const Mock = (() => {
       need(!l.substitutes.includes(l.email), '본인을 대직자로 지정할 수 없습니다.');
       need(!dupOf(l), '이미 등록된 일정과 겹칩니다.');
       const row = { ...l, memo: input.memo || '', updatedAt: new Date().toISOString() };
-      if (ex) Object.assign(ex, row); else db.leaves.push({ ...row, id: 'L' + Date.now() });
+      if (ex) Object.assign(ex, row); else db.leaves.push({ ...row, id: 'L' + Date.now(), createdAt: row.updatedAt });
       if (input.saveDefault) db.users.find((x) => x.email === l.email).defaultSubs = l.substitutes.slice();
       return result(u);
     },
@@ -738,7 +741,8 @@ const Mock = (() => {
       const a = admin(token);
       need((e.title || '').trim(), '제목을 입력하세요.');
       need(e.startDate && (e.endDate || e.startDate) >= e.startDate, '날짜를 확인하세요.');
-      const row = { id: e.id || 'E' + Date.now(), title: e.title.trim(), startDate: e.startDate, endDate: e.endDate || e.startDate, time: e.time || '', memo: e.memo || '' };
+      const row = { id: e.id || 'E' + Date.now(), title: e.title.trim(), startDate: e.startDate, endDate: e.endDate || e.startDate, time: e.time || '', memo: e.memo || '',
+        createdAt: ((db.events || []).find((x) => x.id === e.id) || {}).createdAt || new Date().toISOString() };
       db.events = (db.events || []).filter((x) => x.id !== row.id).concat([row]); return result(a);
     },
     deleteEvent(token, id) {
@@ -801,14 +805,15 @@ function workdays(l) {
 }
 
 /** 해당 날짜의 중요 일정 (PM이 등록, 전 직원 공개) */
-const eventsOn = (ds) => (S.events || []).filter((e) => e.startDate <= ds && ds <= e.endDate)
-  .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.title.localeCompare(b.title));
+/** 캘린더 표시 순서: 등록한 순서 (등록 시각이 없는 예전 일정은 받은 순서 그대로) */
+const byCreated = (a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+const eventsOn = (ds) => (S.events || []).filter((e) => e.startDate <= ds && ds <= e.endDate).sort(byCreated);
 const evtWhen = (e) => fmtRange(e) + (e.time ? ' ' + e.time : '');
 
 /** 해당 날짜에 표시할 일정 (여러 날 일정은 주말·공휴일엔 표시하지 않음) */
 function leavesOn(ds) {
   const d = parse(ds);
-  return scoped().filter((l) => l.startDate <= ds && ds <= l.endDate && (l.startDate === l.endDate || !D.isOff(ds, d)));
+  return scoped().filter((l) => l.startDate <= ds && ds <= l.endDate && (l.startDate === l.endDate || !D.isOff(ds, d))).sort(byCreated);
 }
 
 /* =========================================================
@@ -972,7 +977,6 @@ function viewCalendar() {
     const ds = ymd(d);
     let items = leavesOn(ds);
     if (ui.mineOnly) items = items.filter((l) => l.email === me || l.substitutes.includes(me));
-    items.sort((a, b) => TYPES.indexOf(a.type) - TYPES.indexOf(b.type) || nameOf(a.email).localeCompare(nameOf(b.email)));
     const cls = ['day', d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
     const evs = eventsOn(ds);
     const room = Math.max(maxChips - evs.length, 1);
@@ -997,7 +1001,7 @@ function viewCalendar() {
       ${(S.events || []).filter((e) => e.endDate >= today).length > 3 ? '<button class="btn sm ghost" data-act="tab" data-v="events" style="align-self:flex-start">중요 일정 더 보기</button>' : ''}
     </div>` : '';
 
-  return statsHtml + upcomingHtml + `
+  return upcomingHtml + statsHtml + `
     <div class="cal-toolbar">
       <div class="month-nav">
         <button class="icon-btn" data-act="month" data-v="-1" aria-label="이전 달">‹</button>
@@ -1662,6 +1666,7 @@ function openDay(ds) {
     <footer>${canSeeAll() ? `<button class="btn" data-act="copyAttendance" data-v="${ds}">근태 복사</button>` : ''}
       ${isAdmin() ? `<button class="btn" data-act="newEvent" data-v="${ds}">+ 중요 일정</button>` : ''}<span class="spacer"></span>
       <button class="btn primary" data-new>+ 이 날 일정 등록</button></footer>`);
+  $modal.querySelector('.modal').classList.add('wide');
   $modal.querySelector('[data-new]').onclick = () => openLeaveForm(null, ds);
 }
 
