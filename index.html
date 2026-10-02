@@ -238,7 +238,10 @@
     .stat .value { font-size: 18px; }
     .stat .label, .stat .sub { font-size: 11px; }
     .month-nav h2 { font-size: 16px; min-width: 96px; }
-    .day { min-height: 76px; padding: 2px; }
+    /* 모바일: 주말 칸은 좁게, 평일 칸은 넓게 · 칸을 길게 해서 일정을 더 보여줌 */
+    .cal-head, .cal-grid { grid-template-columns: minmax(0, .6fr) repeat(5, minmax(0, 1fr)) minmax(0, .6fr); }
+    .cal-head div { padding: 8px 2px; }
+    .day { min-height: 108px; padding: 2px; }
     .dnum { font-size: 11px; width: 20px; height: 20px; }
     .hname { display: none; }
     .chip { font-size: 10px; padding: 0 3px; border-radius: 3px; }
@@ -970,7 +973,7 @@ function viewCalendar() {
   const start = addDays(first, -first.getDay());
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
   const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
-  const maxChips = window.matchMedia('(max-width: 640px)').matches ? 3 : 4;
+  const maxChips = window.matchMedia('(max-width: 640px)').matches ? 5 : 4;
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(start, i);
@@ -1219,7 +1222,7 @@ function viewWork() {
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
   const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
   const mobile = window.matchMedia('(max-width: 640px)').matches;
-  const maxChips = mobile ? 3 : 4;
+  const maxChips = mobile ? 5 : 4;
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(start, i);
