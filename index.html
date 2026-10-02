@@ -222,6 +222,12 @@
   .assignee-box select { flex: 1; min-width: 140px; }
   .designated { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; color: var(--text); }
   .designated b { margin-right: 4px; font-size: 13px; }
+  .week-absent { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .week-absent:last-child { border-bottom: 0; }
+  .wa-day { flex: none; width: 92px; font-weight: 700; font-size: 13px; padding-top: 3px; }
+  .wa-day.today { color: var(--primary); }
+  .wa-names { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .wa-names .name-chip { display: inline-flex; align-items: center; gap: 4px; }
   .name-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
   .msg-box { font-size: 13px; line-height: 1.55; resize: vertical; }
   .copy-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -952,8 +958,8 @@ function viewCalendar() {
     for (let i = 0; i < 5; i++) { const ds = ymd(addDays(mon, i)); if (!D.isOff(ds, parse(ds))) leavesOn(ds).forEach((l) => weekPeople.add(l.email)); }
     const warn = scoped().filter((l) => l.endDate >= today && conflictsOf(l).length);
     stats = [
-      [`오늘 ${scope}부재`, `${todays.length}명`, todays.length ? todays.map((l) => `${esc(nameOf(l.email))} ${SHORT[l.type]}`).join(', ') : '전원 근무'],
-      [`이번 주 ${scope}부재`, `${weekPeople.size}명`, [...weekPeople].map((e) => esc(nameOf(e))).join(', ') || '-'],
+      [`오늘 ${scope}부재`, `${todays.length}명`, todays.length ? todays.map((l) => `${esc(nameOf(l.email))} ${SHORT[l.type]}`).join(', ') : '전원 근무', 0, todays.length ? { act: 'day', v: today } : ''],
+      [`이번 주 ${scope}부재`, `${weekPeople.size}명`, [...weekPeople].map((e) => esc(nameOf(e))).join(', ') || '-', 0, weekPeople.size ? { act: 'weekAbsent', v: ymd(mon) } : ''],
       [`${scope}대직 겹침 경고`, `${warn.length}건`, warn.length ? '확인 필요 ⚠' : '문제 없음', warn.length, warn.length ? 'all-warn' : ''],
     ];
   } else {
@@ -968,7 +974,7 @@ function viewCalendar() {
     ];
   }
   const statsHtml = `<div class="stats">${stats.map(([label, value, sub, warn, go]) => `
-    <div class="card stat ${warn ? 'warn' : ''}" ${go ? `data-act="tab" data-v="${go}" style="cursor:pointer"` : ''}>
+    <div class="card stat ${warn ? 'warn' : ''}" ${go ? `data-act="${go.act || 'tab'}" data-v="${go.v || go}" style="cursor:pointer"` : ''}>
       <div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`).join('')}</div>`;
 
   // 달력
@@ -1170,6 +1176,22 @@ function workSummary(list) {
   };
   W.groups = groups;
   return `<div class="stats" style="margin-bottom:12px">${card('week', `이번 주 ${scope}업무`)}${card('soon', '마감 3일 이내', true)}${card('late', '지연 · 기한 지남', true)}</div>`;
+}
+
+/** 이번 주 부재 — 평일별로 누가 어떤 일정인지 (날짜를 누르면 그날 상세) */
+function openWeekAbsent(monStr) {
+  const mon = parse(monStr);
+  const days = [0, 1, 2, 3, 4].map((i) => ymd(addDays(mon, i))).filter((ds) => !D.isOff(ds, parse(ds)));
+  const who = (l) => `<span class="name-chip"><i class="dot t-${l.type}"></i> ${esc(nameOf(l.email))}${partOf(l.email) && canSeeAll() && !ui.part ? ` <span class="muted small">${esc(partOf(l.email))}</span>` : ''} <span class="muted small">${SHORT[l.type]}</span></span>`;
+  const rows = days.map((ds) => {
+    const ls = leavesOn(ds);
+    return `<div class="week-absent" data-act="day" data-v="${ds}">
+      <div class="wa-day${ds === todayStr() ? ' today' : ''}">${fmtShort(ds)} <span class="muted small">${ls.length}명</span></div>
+      <div class="wa-names">${ls.length ? ls.map(who).join('') : '<span class="muted small">부재 없음</span>'}</div></div>`;
+  }).join('');
+  openModal(`<header><h3>이번 주 부재 <span class="muted small">날짜를 누르면 상세</span></h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">${rows || '<div class="empty">이번 주는 평일이 없습니다.</div>'}</div>`);
+  $modal.querySelector('.modal').classList.add('wide');
 }
 
 function openWorkGroup(key) {
@@ -2087,6 +2109,7 @@ document.addEventListener('click', (e) => {
     case 'wday': openWorkDay(v); break;
     case 'wview': ui.workView = v; render(); break;
     case 'wsum': openWorkGroup(v); break;
+    case 'weekAbsent': openWeekAbsent(v); break;
     case 'newTask': openTaskForm(null, v); break;
     case 'editTask': openTaskForm(v); break;
     case 'delTask': removeTask(v); break;
