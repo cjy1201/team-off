@@ -882,6 +882,23 @@ const Mock = (() => {
       if (changes.length) log(a, 'user', `${year}년 휴가 일수`, '', changes.join(', '));
       return result(a, { changed: changes.length });
     },
+    bulkAddLeaves(token, rows) {
+      const a = admin(token); need(rows && rows.length, '등록할 휴가가 없습니다.');
+      let created = 0; const errors = [];
+      rows.forEach((x, i) => {
+        try {
+          need(db.users.some((u) => u.email === x.email), '등록되지 않은 팀원입니다.');
+          need(TYPES.includes(x.type), '일정 유형을 선택하세요.');
+          const l = { email: x.email, type: x.type, startDate: x.startDate, endDate: HALF[x.type] ? x.startDate : x.endDate || x.startDate, substitutes: x.substitutes || [] };
+          need(l.substitutes.length || l.endDate < todayStr(), '오늘 이후 일정은 대직자를 지정해야 합니다.');
+          need(!dupOf({ ...l, id: '' }), '이미 등록된 일정과 겹칩니다.');
+          const at = /^\d{4}-\d{2}-\d{2}$/.test(x.createdAt || '') ? new Date(x.createdAt + 'T09:00:00+09:00').toISOString() : new Date().toISOString();
+          db.leaves.push({ ...l, id: 'L' + Date.now() + '_' + i, memo: x.memo || '', createdAt: at, updatedAt: new Date().toISOString() }); created++;
+        } catch (e) { errors.push({ line: i + 1, message: e.message }); }
+      });
+      if (created) log(a, 'leave', '일괄 등록', '', `${created}건`);
+      return result(a, { created, errors });
+    },
     getHistory(token) {
       admin(token);
       return { items: (db.history || []).slice().reverse().sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0)), days: 90 };
@@ -1663,7 +1680,7 @@ function viewAll() {
       ${f.month ? '<button class="btn sm ghost" data-act="clearMonth">예정 일정 보기</button>' : '<span class="muted small">예정된 일정 표시 중</span>'}
       <label class="toggle"><input type="checkbox" data-act="filter" data-k="warnOnly" ${f.warnOnly ? 'checked' : ''}> 겹침 경고만</label>
       <span style="flex:1"></span>
-      ${isAdmin() ? '<button class="btn primary" data-act="newLeave">+ 대리 등록</button>' : ''}
+      ${isAdmin() ? '<button class="btn" data-act="bulkLeaves">휴가 일괄 등록</button><button class="btn primary" data-act="newLeave">+ 대리 등록</button>' : ''}
     </div>
     ${isAdmin() ? '' : `<div class="infobox" style="margin:0 0 12px">${canSeeAll() ? '전체 직원' : esc(part) + ' 파트원'}의 일정을 볼 수 있습니다. 수정·삭제는 본인 또는 PM만 할 수 있습니다.</div>`}
     <div class="list">${list.length ? list.map((l) => leaveItem(l, { showName: true })).join('') : '<div class="card empty">해당하는 일정이 없습니다.</div>'}</div>
@@ -1995,6 +2012,7 @@ const GUIDE = [
   { r: 'pm', t: 'PM 관리', items: [
     { x: '[팀원 관리]에서 직원을 추가하면 임시 비밀번호가 담긴 안내 메시지를 복사할 수 있어요. 여러 명은 [일괄 등록]으로.' },
     { x: '[전체 일정] 탭 아래 사용 현황의 [휴가 일수 입력]에서 직원별 일반휴가 · 특별휴가 · 대체휴가 부여 일수를 넣으면, 본인과 PM에게 남은 휴가(합계 − 사용)가 보여요.' },
+    { x: '[전체 일정] → [휴가 일괄 등록]에 그룹웨어나 엑셀의 휴가 목록을 제목 줄까지 복사해 붙여넣으면, 미리보기로 확인한 뒤 한 번에 등록할 수 있어요. 지난 일정은 대직자를 비워도 돼요.' },
     { x: '[변경 이력]에서 최근 90일 동안 누가 무엇을 바꿨는지(로그인 포함) 볼 수 있어요.' },
     { x: '데이터는 1시간마다 스프레드시트에 자동 백업돼요. 마지막 백업 시각은 팀원 관리 위쪽에 보여요.' },
   ] },
@@ -2011,6 +2029,7 @@ const UPDATES = [
     { x: '사용 안내 페이지(지금 이 화면)가 생겼어요.' },
     { x: '[내 일정]에서 올해 남은 휴가를 볼 수 있어요(PM이 일반 · 특별 · 대체휴가 일수를 입력하면 표시, 참고용).' },
     { r: 'pm', x: '[전체 일정] → 사용 현황의 [휴가 일수 입력]에서 일반 · 특별 · 대체휴가를 나눠 입력할 수 있어요.' },
+    { r: 'pm', x: '[전체 일정] → [휴가 일괄 등록]: 그룹웨어 휴가 목록을 복사해 붙여넣으면 지난 휴가를 한 번에 등록해요.' },
   ] },
   { d: '2026-10-02', items: [
     { x: 'PM · PL의 휴가가 전 직원에게 보여요.' },
@@ -2277,6 +2296,136 @@ function parseBulk(text) {
     });
 }
 
+/**
+ * 휴가 일괄 등록용 붙여넣기 해석 (PM). 그룹웨어 목록을 그대로 복사해도 읽히게:
+ *  - 제목 줄이 있으면 칸 이름으로 찾는다 (휴가자/연수자·직원·이름 / 유형·종류 / 시작일 / 종료일 / 대직자 / 메모·사유 / 등록일)
+ *  - 제목 줄이 없으면: 직원 이름이 있는 첫 칸 = 직원, 날짜 칸 순서대로 시작일·종료일(·등록일), 유형 단어가 있는 칸 = 유형, 그 뒤 다른 직원 이름 = 대직자
+ *  - 유형: 휴가·연차 → 연차, 휴가(오전)·오전반차 → 오전반차, 휴가(오후) → 오후반차, 병가, 연수·교육 → 연수/교육, 기타·경조·공가 → 기타
+ *  - 날짜: 2026-03-02 · 2026.3.2 · 3/2 · 3.2 (연도 없으면 올해)
+ */
+function leaveTypeOf(v) {
+  const s = String(v || '').replace(/\s/g, '');
+  if (!s) return '';
+  if (/병가/.test(s)) return '병가';
+  if (/연수|교육/.test(s)) return '연수/교육';
+  if (/오전/.test(s)) return '오전반차';
+  if (/오후/.test(s)) return '오후반차';
+  if (/반차/.test(s)) return '?반차';
+  if (/연차|휴가|월차/.test(s)) return '연차';
+  if (/기타|경조|공가|출산|예비군/.test(s)) return '기타';
+  return '';
+}
+function bulkDate(v) {
+  const s = String(v || '').trim().replace(/\s/g, '');
+  let m = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})\.?$/);
+  if (m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
+  m = s.match(/^(\d{1,2})[-./](\d{1,2})\.?$/);
+  if (m) return `${todayStr().slice(0, 4)}-${pad(+m[1])}-${pad(+m[2])}`;
+  return '';
+}
+function parseLeaveBulk(text) {
+  const findUser = (v) => {
+    const s = String(v || '').trim().toLowerCase();
+    if (!s) return null;
+    const byEmail = S.users.find((u) => u.email === s);
+    if (byEmail) return byEmail;
+    const named = S.users.filter((u) => u.name.toLowerCase() === s);
+    return named.length === 1 ? named[0] : named.length > 1 ? { dup: true } : null;
+  };
+  const HEAD = { who: /휴가자|연수자|직원|성명|이름|이메일|신청자/, type: /유형|종류|구분/, start: /시작/, end: /종료/, sub: /대직/, memo: /메모|사유|비고|내용/, created: /등록일|신청일/ };
+  let cols = null;
+  const out = [];
+  text.split(/\r?\n/).forEach((line, i) => {
+    if (!line.trim()) return;
+    const cells = (line.includes('\t') ? line.split('\t') : line.split(/\s*,\s*/)).map((c) => c.trim());
+    // 제목 줄?
+    const head = {};
+    cells.forEach((c, j) => Object.keys(HEAD).forEach((k) => { if (head[k] === undefined && c && c.length <= 12 && HEAD[k].test(c)) head[k] = j; }));
+    if (head.who !== undefined && head.start !== undefined && !cells.some((c) => bulkDate(c))) { cols = head; return; }
+
+    const r = { line: i + 1, raw: line };
+    let who, typeText, start, end, created, subText, memo;
+    if (cols) {
+      who = cells[cols.who]; start = bulkDate(cells[cols.start]); end = cols.end !== undefined ? bulkDate(cells[cols.end]) : '';
+      typeText = cols.type !== undefined ? cells[cols.type] : '';
+      if (!leaveTypeOf(typeText)) typeText = cells.find((c) => leaveTypeOf(c)) || typeText; // 유형 칸이 비면 제목 등에서
+      subText = cols.sub !== undefined ? cells[cols.sub] : '';
+      memo = cols.memo !== undefined ? cells[cols.memo] : '';
+      created = cols.created !== undefined ? bulkDate(cells[cols.created]) : '';
+    } else {
+      const wi = cells.findIndex((c) => findUser(c));
+      who = wi >= 0 ? cells[wi] : cells[0];
+      const dates = cells.map(bulkDate).filter(Boolean);
+      [start, end, created] = [dates[0] || '', dates[1] || '', dates[2] || ''];
+      typeText = cells.find((c) => leaveTypeOf(c)) || '';
+      subText = cells.slice(wi + 1).find((c) => { const u = findUser(c); return u && !u.dup && c !== who; }) || '';
+      memo = '';
+    }
+    const u = findUser(who);
+    r.who = who || ''; r.email = u && !u.dup ? u.email : ''; r.name = u && !u.dup ? u.name : who || '';
+    r.type = leaveTypeOf(typeText); r.typeText = typeText || '';
+    r.startDate = start; r.endDate = HALF[r.type] ? start : end || start; r.createdAt = created; r.memo = memo || '';
+    r.subs = []; r.subNames = [];
+    String(subText || '').split(/[,;·/]/).map((x) => x.trim()).filter(Boolean).forEach((x) => {
+      const su = findUser(x);
+      if (su && !su.dup) { r.subs.push(su.email); r.subNames.push(su.name); } else r.subError = `대직자 '${x}'${su && su.dup ? ' 동명이인 — 이메일로 적어 주세요' : ' 없음'}`;
+    });
+    if (!u) r.error = `직원 '${who || ''}'을(를) 찾을 수 없음`;
+    else if (u.dup) r.error = `'${who}' 동명이인 — 이메일로 적어 주세요`;
+    else if (!r.type) r.error = `유형을 알 수 없음 (${typeText || '빈칸'})`;
+    else if (r.type === '?반차') r.error = '반차는 오전/오후를 적어 주세요';
+    else if (!r.startDate) r.error = '시작일을 알 수 없음';
+    else if (r.endDate < r.startDate) r.error = '종료일이 시작일보다 빠름';
+    else if (r.subError) r.error = r.subError;
+    else if (r.subs.includes(r.email)) r.error = '본인을 대직자로 지정할 수 없음';
+    else if (!r.subs.length && r.endDate >= todayStr()) r.error = '오늘 이후 일정은 대직자 필요';
+    else {
+      const clash = (x) => x.email === r.email && x.startDate <= r.endDate && r.startDate <= x.endDate
+        && !((x.type === '오전반차' && r.type === '오후반차') || (x.type === '오후반차' && r.type === '오전반차'));
+      if (S.leaves.some(clash)) r.error = '이미 등록된 일정과 겹침';
+      else if (out.some((o) => !o.error && clash(o))) r.error = '붙여넣은 목록 안에서 겹침';
+    }
+    out.push(r);
+  });
+  return out;
+}
+
+function openLeaveBulkForm() {
+  const m = openModal(`
+    <header><h3>휴가 일괄 등록</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="infobox" style="margin-top:0;color:var(--text)">그룹웨어나 엑셀의 휴가 목록을 <b>제목 줄까지 함께</b> 복사해서 붙여넣으세요.<br>
+        <span class="muted small">필요한 칸: 휴가자(이름 또는 이메일) · 유형 · 시작일 · 종료일 · 대직자 · 등록일(선택). 다른 칸은 무시합니다.<br>
+        유형: 휴가·연차 → 연차, 휴가(오전)/(오후) → 오전/오후반차, 병가, 연수·교육, 기타 · 지난 일정은 대직자를 비워도 됩니다.</span></div>
+      <div class="field"><textarea name="bulk" rows="7" spellcheck="false" placeholder="휴가자&#9;유형&#9;시작일&#9;종료일&#9;등록일&#9;대직자&#10;임동빈&#9;휴가(오후)&#9;2026-10-02&#9;2026-10-02&#9;2026-10-02&#9;김선희"></textarea></div>
+      <div data-bulkpreview></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save disabled>등록</button></footer>`);
+  m.querySelector('.modal').classList.add('wide');
+  const ta = m.querySelector('[name=bulk]');
+  const save = m.querySelector('[data-save]');
+  let rows = [];
+  ta.oninput = () => {
+    rows = parseLeaveBulk(ta.value);
+    const ok = rows.filter((r) => !r.error);
+    save.disabled = !ok.length;
+    save.textContent = ok.length ? `${ok.length}건 등록` : '등록';
+    m.querySelector('[data-bulkpreview]').innerHTML = rows.length ? `
+      <div class="card table-wrap" style="margin-top:10px"><table>
+        <thead><tr><th>직원</th><th>유형</th><th>기간</th><th>대직자</th><th>확인</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr><td style="white-space:nowrap">${esc(r.name)}</td>
+          <td style="white-space:nowrap">${r.type && r.type !== '?반차' ? esc(r.type) : ''}${r.typeText && r.typeText !== r.type ? ` <span class="muted small">${esc(r.typeText)}</span>` : ''}</td>
+          <td style="white-space:nowrap">${r.startDate ? esc(fmtRange(r)) : ''}</td><td>${esc(r.subNames.join(', ')) || '<span class="muted">-</span>'}</td>
+          <td style="color:${r.error ? 'var(--danger)' : 'var(--t-am)'}">${r.error ? '✕ ' + esc(r.error) : '✓'}</td></tr>`).join('')}</tbody></table></div>
+      ${rows.length > ok.length ? `<p class="muted small">✕ 표시된 ${rows.length - ok.length}줄은 빼고 등록합니다.</p>` : ''}` : '';
+  };
+  save.onclick = () => run(api('bulkAddLeaves', rows.filter((r) => !r.error).map((r) => ({
+    email: r.email, type: r.type, startDate: r.startDate, endDate: r.endDate, substitutes: r.subs, memo: r.memo, createdAt: r.createdAt,
+  }))), '', (res) => {
+    toast(`${res.created}건 등록했습니다.` + ((res.errors || []).length ? ` (${res.errors.length}건은 등록하지 못함)` : ''), !!(res.errors || []).length);
+  });
+}
+
 function openBulkForm() {
   const m = openModal(`
     <header><h3>직원 일괄 등록</h3><button class="btn ghost sm" data-close>닫기</button></header>
@@ -2487,6 +2636,7 @@ document.addEventListener('click', (e) => {
     case 'news': openNews(); break;
     case 'guide': openGuide(); break;
     case 'annualForm': openAnnualForm(); break;
+    case 'bulkLeaves': openLeaveBulkForm(); break;
     case 'newsGo': goNews(v); break;
     case 'reloadHistory': HX.loaded = false; HX.error = ''; render(); break;
     case 'moreHistory': HX.limit += 200; render(); break;
