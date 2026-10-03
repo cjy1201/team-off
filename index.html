@@ -657,7 +657,8 @@ const Mock = (() => {
     const brief = (l) => u.role === 'member' && !u.viewAll && !mine(l);
     return {
       me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {} },
-      users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {} } : { email: x.email, name: x.name, part: x.part })),
+      users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {} }
+        : u.role === 'member' && u.viewAll && x.annual && Object.keys(x.annual).length ? { email: x.email, name: x.name, part: x.part, annual: x.annual } : { email: x.email, name: x.name, part: x.part })),
       leaves: db.leaves.filter(visible).map((l) => (brief(l) ? { ...l, memo: '', conflicts: [] } : { ...l, conflicts: conflictsOf(l) })),
       holidays: db.holidays,
       events: db.events || [],
@@ -974,6 +975,23 @@ function annualOf(email, map, year) {
   const has = ANNUAL_KINDS.some((k) => typeof kinds[k] === 'number');
   const granted = has ? ANNUAL_KINDS.reduce((s, k) => s + (kinds[k] || 0), 0) : null;
   return { used, granted, kinds, left: granted === null ? null : granted - used };
+}
+/**
+ * 남은 휴가를 넘는 연차·반차인지 (부여 일수를 입력한 사람만, 경고용) — 넘으면 { year, left, need, after }
+ * 수정이면 원래 일정의 일수는 돌려놓고 계산한다
+ */
+function annualShortage(p, ex) {
+  const counts = (l) => l && (l.type === '연차' || HALF[l.type]);
+  if (!counts(p) || !p.startDate) return null;
+  const year = p.startDate.slice(0, 4);
+  const owner = p.email || S.me.email;
+  const map = owner === S.me.email ? S.me.annual : (S.users.find((u) => u.email === owner) || {}).annual;
+  const an = annualOf(owner, map, year);
+  if (an.granted === null) return null;
+  const back = ex && counts(ex) && ex.email === owner && ex.startDate.startsWith(year) ? workdays(ex) : 0;
+  const need = workdays({ ...p, endDate: HALF[p.type] ? p.startDate : p.endDate || p.startDate });
+  const left = an.left + back;
+  return need > left ? { year, left, need, after: left - need } : null;
 }
 /** '일반 15 · 대체 1' */
 const annualBreak = (an) => ANNUAL_KINDS.filter((k) => typeof an.kinds[k] === 'number').map((k) => `${k.slice(0, 2)} ${an.kinds[k]}`).join(' · ');
@@ -1649,9 +1667,11 @@ function viewMine() {
 function viewAll() {
   const f = ui.allFilter, today = todayStr(), year = today.slice(0, 4);
   const part = canSeeAll() ? ui.part : S.me.part;
-  // 휴가 사용 현황(개수)은 PM 전체, PL은 자기 파트만. 전체 조회 옵션만 있는 사람은 볼 수 없음
-  const usagePart = isAdmin() ? part : isPL() ? S.me.part : null;
-  const usagePeople = usagePart === null ? [] : S.users.filter((u) => !usagePart || u.part === usagePart);
+  // 휴가 사용 현황(개수)은 PM 전체, PL은 자기 파트만, '전체 일정 조회' 권한자는 외부직원(부여 일수가 입력된 사람)만
+  const extOnly = !isAdmin() && !isPL() && !!S.me.viewAll;
+  const usagePart = isAdmin() ? part : isPL() ? S.me.part : extOnly ? part || '' : null;
+  const usagePeople = usagePart === null ? [] : S.users.filter((u) => (!usagePart || u.part === usagePart) && (!extOnly || annualOf(u.email, u.annual, year).granted !== null));
+  const showAnnual = isAdmin() || extOnly;
   const people = S.users.filter((u) => !part || u.part === part);
   let list = scoped().slice();
   if (f.member) list = list.filter((l) => l.email === f.member);
@@ -1683,7 +1703,7 @@ function viewAll() {
       <td class="num"><b>${sum((l) => l.type === '연차' || HALF[l.type])}</b></td>
       <td class="num">${sum((l) => l.type === '병가')}</td>
       <td class="num">${sum((l) => l.type === '연수/교육')}</td>
-      <td class="num">${sum((l) => l.type === '기타')}</td>${isAdmin() ? (() => {
+      <td class="num">${sum((l) => l.type === '기타')}</td>${showAnnual ? (() => {
         const an = annualOf(u.email, u.annual, year);
         return `<td class="num">${an.granted === null ? '<span class="muted">-</span>' : `<span title="${esc(annualBreak(an))}">${an.granted}</span>`}</td><td class="num">${an.left === null ? '<span class="muted">-</span>' : an.left < 0 ? `<b style="color:var(--danger)">${an.left}</b>` : `<b>${an.left}</b>`}</td>`;
       })() : ''}</tr>`;
@@ -1702,11 +1722,11 @@ function viewAll() {
     </div>
     ${isAdmin() ? '' : `<div class="infobox" style="margin:0 0 12px">${canSeeAll() ? '전체 직원' : esc(part) + ' 파트원'}의 일정을 볼 수 있습니다. 수정·삭제는 본인(지나지 않은 일정) 또는 PM만 할 수 있습니다.</div>`}
     ${personAll ? personHtml : `<div class="list">${listHtml(list)}</div>`}
-    ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${usagePart ? esc(usagePart) + ' 파트' : '팀원별'} 사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
+    ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${extOnly ? '외부직원 ' : ''}${usagePart ? esc(usagePart) + ' 파트' : extOnly ? '' : '팀원별'} 사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
       ${isAdmin() ? '<button class="btn sm" data-act="annualForm">휴가 일수 입력</button>' : ''}</div>
     <div class="card table-wrap"><table>
-      <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th>${isAdmin() ? '<th class="num">부여 합계</th><th class="num">남은 휴가</th>' : ''}</tr></thead>
-      <tbody>${rows}</tbody></table></div>`}`;
+      <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th>${showAnnual ? '<th class="num">부여 합계</th><th class="num">남은 휴가</th>' : ''}</tr></thead>
+      <tbody>${rows || `<tr><td colspan="9" class="muted">${extOnly ? '부여 일수가 입력된 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
 }
 
 /* ---------- 휴가 일수 입력 (PM) — 일반휴가·특별휴가·대체휴가 따로 ---------- */
@@ -2245,6 +2265,14 @@ function openLeaveForm(id, date, restore) {
       const ok = await confirmBox('대직자와 일정이 겹칩니다', `<div class="warnbox" style="margin-top:0">${r.warnings.map((w) => `<div>⚠ ${esc(w)}</div>`).join('')}</div>
         <p class="muted small">그래도 저장하면 캘린더에 경고 표시가 남습니다. 대직자를 바꾸는 것을 권장합니다.</p>`, '그래도 저장');
       if (!ok) return openLeaveForm(id, null, f); // 입력하던 내용 그대로 폼으로 돌아감
+    }
+    const short = annualShortage(p, ex);
+    if (short) {
+      const who = p.email && p.email !== S.me.email ? nameOf(p.email) + '님의' : '';
+      const ok = await confirmBox('남은 휴가를 넘습니다', `<div class="warnbox" style="margin-top:0">${who ? esc(who) + ' ' : ''}${short.year}년 남은 휴가는 <b>${short.left}일</b>인데
+        이번에 <b>${short.need}일</b>을 등록하면 <b>${short.after}일</b>이 됩니다.</div>
+        <p class="muted small">PM이 입력한 부여 일수 기준의 참고용 계산입니다. 실제 남은 일수가 다르면 그대로 저장해도 됩니다.</p>`, '그래도 저장');
+      if (!ok) return openLeaveForm(id, null, f);
     }
     const asDefault = f.showDef && f.saveDefault;
     run(api('saveLeave', { ...p, saveDefault: asDefault }), (ex ? '수정했습니다.' : '등록했습니다.') + (asDefault ? ' 기본 대직자도 저장했습니다.' : ''));
