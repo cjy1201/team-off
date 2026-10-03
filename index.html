@@ -194,6 +194,8 @@
   .bell { position: relative; }
   .bell svg { width: 19px; height: 19px; }
   .nbadge { position: absolute; top: 1px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+  .ndot { position: absolute; top: 6px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+  .badge.new { background: var(--danger); color: #fff; margin-left: 4px; }
   .news-item { position: relative; padding: 10px 0 10px 14px; border-bottom: 1px solid var(--border); }
   .news-item:last-of-type { border-bottom: 0; }
   .news-item[data-act] { cursor: pointer; }
@@ -1627,7 +1629,7 @@ function bellButton() {
   const n = (S.news && S.news.unread) || 0;
   return `<button class="icon-btn ghost-btn bell" data-act="news" title="새 소식" aria-label="새 소식${n ? ' ' + n + '개' : ''}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-    ${n ? `<span class="nbadge">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
+    ${n ? `<span class="nbadge">${n > 9 ? '9+' : n}</span>` : newGuide() ? '<span class="ndot"></span>' : ''}</button>`;
 }
 
 /** '방금' · 'N분 전' · 'N시간 전' · '10/3 14:02' */
@@ -1645,6 +1647,7 @@ function openNews() {
   const seen = n.seenAt || '';
   openModal(`<header><h3>새 소식</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
+      <button class="btn" data-act="guide" style="width:100%;margin-bottom:8px">사용 안내 · 업데이트 내역 <span class="muted small">(최근 ${Number(UPDATES[0].d.slice(5, 7))}/${Number(UPDATES[0].d.slice(8))} 업데이트)</span>${newGuide() ? '<span class="badge new">NEW</span>' : ''}</button>
       ${n.items.length ? n.items.map((x) => `<div class="news-item ${x.at > seen ? 'unread' : ''}" ${x.go ? `data-act="newsGo" data-v="${esc(x.go)}"` : ''}>
         <div class="nt">${esc(x.text)}</div><div class="when">${esc(agoText(x.at))}</div></div>`).join('') : '<div class="empty">새 소식이 없습니다.</div>'}
       <p class="muted small" style="margin:12px 0 0">나를 대직자로 지정하거나, 나에게 업무가 배정되거나, 중요 일정이 바뀌면 여기에 알려드려요. 내가 한 일은 오지 않아요.</p>
@@ -1935,8 +1938,18 @@ const UPDATES = [
   ] },
 ];
 
+const guideFor = (r) => !r || (r === 'pm' ? isAdmin() : r === 'all' ? canSeeAll() : r === 'team' ? canSeeTeam() : false);
+/* 안 본 업데이트가 있으면 종 아이콘에 작은 점 (이 기기 기준, 나에게 해당하는 항목이 있는 업데이트만) */
+const GUIDE_SEEN_KEY = 'team-off-guide-seen';
+const latestUpdate = () => (UPDATES.find((u) => u.items.some((i) => guideFor(i.r))) || { d: '' }).d;
+function newGuide() {
+  let seen = '';
+  try { seen = localStorage.getItem(GUIDE_SEEN_KEY) || ''; } catch (e) { return false; }
+  return latestUpdate() > seen;
+}
+
 function openGuide() {
-  const okFor = (r) => !r || (r === 'pm' ? isAdmin() : r === 'all' ? canSeeAll() : r === 'team' ? canSeeTeam() : false);
+  const okFor = guideFor;
   const list = (items) => `<ul>${items.filter((i) => okFor(i.r)).map((i) => `<li>${esc(i.x)}</li>`).join('')}</ul>`;
   const md = (d) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`;
   openModal(`<header><h3>사용 안내</h3><button class="btn ghost sm" data-close>닫기</button></header>
@@ -1947,6 +1960,10 @@ function openGuide() {
       ${GUIDE.filter((g) => okFor(g.r)).map((g) => `<h4>${esc(g.t)}</h4>${list(g.items)}`).join('')}
     </div>`);
   $modal.querySelector('.modal').classList.add('wide');
+  if (newGuide()) {
+    try { localStorage.setItem(GUIDE_SEEN_KEY, latestUpdate()); } catch (e) {}
+    render(); // 종 아이콘의 점 없애기 (열린 창은 그대로)
+  }
 }
 
 /* ---------- 날짜 상세 ---------- */
