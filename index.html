@@ -190,6 +190,22 @@
   .toggle.remember input { margin-top: 3px; }
   .ghost-btn { border-color: transparent; background: transparent; color: var(--muted); font-size: 18px; }
   .ghost-btn.spin { animation: spin .8s linear infinite; }
+  /* 새 소식 */
+  .bell { position: relative; }
+  .bell svg { width: 19px; height: 19px; }
+  .nbadge { position: absolute; top: 1px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+  .news-item { position: relative; padding: 10px 0 10px 14px; border-bottom: 1px solid var(--border); }
+  .news-item:last-of-type { border-bottom: 0; }
+  .news-item[data-act] { cursor: pointer; }
+  .news-item.unread::before { content: ''; position: absolute; left: 0; top: 16px; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); }
+  .news-item.unread .nt { font-weight: 700; }
+  .news-item .when { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  /* 변경 이력 (PM) */
+  .hrow { display: flex; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .hrow:last-child { border-bottom: 0; }
+  .hwhen { flex: none; width: 78px; font-size: 12px; color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+  .hbody { flex: 1; min-width: 0; }
+  .hsum { margin-top: 2px; overflow-wrap: anywhere; }
   .whoami.btn { padding: 4px 8px; font-weight: 500; }
   /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 기타) */
   .k-0 { background: #4f46e5; } .k-1 { background: #dc2626; } .k-2 { background: #d97706; }
@@ -492,7 +508,7 @@ const api = (fn, ...args) => call(fn, getToken(), ...args);
 
 /* 미리보기용 가짜 서버 — Code.gs와 같은 권한 규칙·필터링을 따른다. */
 const Mock = (() => {
-  const KEY = 'team-off-preview-v11';
+  const KEY = 'team-off-preview-v12';
   const PW = 'test1234';
   const holidays = [
     ['2026-01-01', '신정'], ['2026-02-16', '설날 연휴'], ['2026-02-17', '설날'], ['2026-02-18', '설날 연휴'],
@@ -541,8 +557,20 @@ const Mock = (() => {
         { id: 'E1', title: '정기 배포', startDate: rel(5), endDate: rel(5), time: '22:00~', memo: '배포 당일 개발·QA 휴가 자제' },
         { id: 'E2', title: '전담반 워크숍', startDate: rel(16), endDate: rel(17), time: '', memo: '전원 참석' },
       ],
+      news: Object.fromEntries(['lead@example.com', 'park@example.com', 'choi@example.com'].map((e) => [e, { seenAt: ago(90), items: [
+        { at: ago(20), text: `이대리님이 나를 대직자로 지정했어요 · ${fmtRange({ startDate: rel(2), endDate: rel(3) })}`, go: 'day:' + rel(2) },
+        { at: ago(60), text: '업무 배정: 10월 정기배포 준비', go: 'tab:work' },
+        { at: ago(600), text: `새 중요 일정: 전담반 워크숍 ${fmtRange({ startDate: rel(16), endDate: rel(17) })}`, go: 'day:' + rel(16) },
+      ] }])),
+      history: [
+        { id: 'H1', at: ago(600), actor: 'lead@example.com', kind: 'event', action: '등록', owner: '', summary: `전담반 워크숍 ${fmtRange({ startDate: rel(16), endDate: rel(17) })}` },
+        { id: 'H2', at: ago(120), actor: 'park@example.com', kind: 'login', action: '로그인', owner: 'park@example.com', summary: '로그인 유지' },
+        { id: 'H3', at: ago(60), actor: 'lee@example.com', kind: 'task', action: '등록', owner: '', summary: '[개발] 10월 정기배포 준비' },
+        { id: 'H4', at: ago(20), actor: 'lee@example.com', kind: 'leave', action: '등록', owner: 'lee@example.com', summary: `연차 ${fmtRange({ startDate: rel(2), endDate: rel(3) })} · 대직 박과장` },
+      ],
     };
   };
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { db = null; }
   if (!db) db = seed();
@@ -556,6 +584,37 @@ const Mock = (() => {
     return u || null;
   };
   const admin = (token) => { const u = auth(token); need(u.role === 'pm', 'PM(관리자)만 사용할 수 있는 기능입니다.'); return u; };
+  // 변경 이력 · 새 소식 (Code.gs와 같은 방식: 나에게는 오지 않고, 대직 소식엔 휴가 종류를 넣지 않음)
+  const log = (u, kind, action, owner, summary) => { db.history = (db.history || []).concat([{ id: 'H' + Date.now() + Math.random(), at: new Date().toISOString(), actor: u.email, kind, action, owner: owner || '', summary }]); };
+  const push = (u, emails, text, go) => {
+    db.news = db.news || {};
+    [...new Set(emails)].filter((e) => e && e !== u.email && db.users.some((x) => x.email === e)).forEach((e) => {
+      const n = (db.news[e] = db.news[e] || { seenAt: '', items: [] });
+      n.items = [{ at: new Date().toISOString(), text, go: go || '' }].concat(n.items).slice(0, 20);
+    });
+  };
+  const newsOf = (u) => {
+    const n = (db.news || {})[u.email];
+    return n ? { items: n.items, unread: n.items.filter((x) => x.at > (n.seenAt || '')).length, seenAt: n.seenAt || '' } : { items: [], unread: 0, seenAt: '' };
+  };
+  const leaveNews = (u, old, now) => {
+    const cur = now || old, who = nameOf(cur.email), today = todayStr();
+    const before = old ? old.substitutes : [], after = now ? now.substitutes : [];
+    if (now && now.endDate >= today) {
+      push(u, after.filter((e) => !before.includes(e)), `${who}님이 나를 대직자로 지정했어요 · ${fmtRange(now)}`, 'day:' + now.startDate);
+      if (old && (old.startDate !== now.startDate || old.endDate !== now.endDate)) push(u, after.filter((e) => before.includes(e)), `${who}님 일정 날짜가 바뀌었어요 (대직) · ${fmtRange(old)} → ${fmtRange(now)}`, 'day:' + now.startDate);
+    }
+    if (old && old.endDate >= today) push(u, before.filter((e) => !after.includes(e)), now ? `${who}님 일정의 대직자에서 빠졌어요 · ${fmtRange(old)}` : `${who}님이 일정을 취소했어요 (대직 해제) · ${fmtRange(old)}`, now ? 'day:' + old.startDate : '');
+    if (cur.email !== u.email && cur.endDate >= today) push(u, [cur.email], `${u.name}님이 내 일정을 ${!old ? '등록' : !now ? '삭제' : '수정'}했어요 · ${cur.type} ${fmtRange(cur)}`, now ? 'day:' + now.startDate : '');
+  };
+  const taskNews = (u, old, now) => {
+    const today = todayStr(), before = old ? old.assignees : [], after = now ? now.assignees : [];
+    if (now && now.endDate >= today && now.visibility !== 'private') {
+      push(u, after.filter((e) => !before.includes(e)), `업무 배정: ${now.title} · ${fmtRange(now)}`, 'tab:work');
+      if (old && (old.startDate !== now.startDate || old.endDate !== now.endDate)) push(u, after.filter((e) => before.includes(e)), `업무 일정 변경: ${now.title} · ${fmtRange(old)} → ${fmtRange(now)}`, 'tab:work');
+    }
+    if (old && old.endDate >= today && old.visibility !== 'private') push(u, before.filter((e) => !after.includes(e)), now ? `업무 담당에서 빠졌어요: ${old.title}` : `업무 삭제: ${old.title} · ${fmtRange(old)}`, 'tab:work');
+  };
   const defs = (u) => (u.defaultSubs || []).filter((e) => db.users.some((x) => x.email === e));
   const checkDefs = (subs, owner) => {
     subs = [...new Set((subs || []).filter(Boolean))];
@@ -588,6 +647,7 @@ const Mock = (() => {
       holidays: db.holidays,
       events: db.events || [],
       designatedBy: [...new Set(db.leaves.filter((l) => l.substitutes.includes(u.email) && l.endDate >= todayStr()).map((l) => nameOf(l.email)))].sort(),
+      news: newsOf(u),
     };
   };
   const result = (u, extra) => { persist(); return { state: state(u), ...extra }; };
@@ -622,6 +682,7 @@ const Mock = (() => {
     login(email, pw, remember) {
       const u = db.users.find((x) => x.email === String(email).trim().toLowerCase());
       need(u && u.password === pw, '이메일 또는 비밀번호가 올바르지 않습니다.');
+      log(u, 'login', '로그인', u.email, remember ? '로그인 유지' : '');
       return result(u, { token: tokenOf(u) });
     },
     changePassword(token, cur, next, remember) {
@@ -651,7 +712,11 @@ const Mock = (() => {
       need(!l.substitutes.includes(l.email), '본인을 대직자로 지정할 수 없습니다.');
       need(!dupOf(l), '이미 등록된 일정과 겹칩니다.');
       const row = { ...l, memo: input.memo || '', updatedAt: new Date().toISOString() };
+      const old = ex ? { ...ex } : null;
       if (ex) Object.assign(ex, row); else db.leaves.push({ ...row, id: 'L' + Date.now(), createdAt: row.updatedAt });
+      const desc = (x) => `${x.type} ${fmtRange(x)} · 대직 ${x.substitutes.map(nameOf).join(', ')}`;
+      log(u, 'leave', old ? '수정' : '등록', l.email, old && desc(old) !== desc(l) ? `${desc(old)} → ${desc(l)}` : desc(l));
+      leaveNews(u, old, l);
       if (input.saveDefault) db.users.find((x) => x.email === l.email).defaultSubs = l.substitutes.slice();
       return result(u);
     },
@@ -659,7 +724,10 @@ const Mock = (() => {
       const u = auth(token); const ex = db.leaves.find((l) => l.id === id);
       need(ex, '이미 삭제된 일정입니다.');
       need(u.role === 'pm' || ex.email === u.email, '본인 일정만 삭제할 수 있습니다.');
-      db.leaves = db.leaves.filter((l) => l.id !== id); return result(u);
+      db.leaves = db.leaves.filter((l) => l.id !== id);
+      log(u, 'leave', '삭제', ex.email, `${ex.type} ${fmtRange(ex)} · 대직 ${ex.substitutes.map(nameOf).join(', ')}${ex.memo ? ' · 메모: ' + ex.memo : ''}`);
+      leaveNews(u, ex, null);
+      return result(u);
     },
     saveUser(token, i) {
       const a = admin(token);
@@ -673,8 +741,10 @@ const Mock = (() => {
       need(!(ex && ex.role === 'pm' && i.role !== 'pm' && db.users.filter((x) => x.role === 'pm').length <= 1), 'PM(관리자)은 최소 1명 이상 있어야 합니다.');
       const defaultSubs = checkDefs(i.defaultSubs, email);
       const viewAll = i.role === 'member' && !!i.viewAll;
-      if (ex) { Object.assign(ex, { name: i.name.trim(), role: i.role, part, defaultSubs, viewAll }); return result(a, { email }); }
+      const desc = (x) => `${x.name} · ${roleLabel(x)}${x.part ? ' · ' + x.part : ''}`;
+      if (ex) { const before = desc(ex); Object.assign(ex, { name: i.name.trim(), role: i.role, part, defaultSubs, viewAll }); if (before !== desc(ex)) log(a, 'user', '정보 수정', email, `${before} → ${desc(ex)}`); return result(a, { email }); }
       const t = temp(); db.users.push({ email, name: i.name.trim(), role: i.role, part, defaultSubs, viewAll, password: t, mustChange: true });
+      log(a, 'user', '추가', email, desc({ name: i.name.trim(), role: i.role, part }));
       return result(a, { tempPassword: t, email, appUrl: PREVIEW_URL });
     },
     setMyDefaultSubs(token, subs) {
@@ -699,7 +769,10 @@ const Mock = (() => {
     },
     deleteUser(token, email) {
       const a = admin(token); need(email !== a.email, '본인 계정은 삭제할 수 없습니다.');
-      db.users = db.users.filter((u) => u.email !== email); return result(a);
+      const gone = db.users.find((u) => u.email === email);
+      db.users = db.users.filter((u) => u.email !== email);
+      if (gone) log(a, 'user', '삭제', email, `${gone.name}${gone.part ? ' · ' + gone.part : ''}`);
+      return result(a);
     },
     _absences(u, task) { // 서버와 같은 규칙: 휴가 공개 범위 안에서만, 종류 없이 날짜만
       const seeAll = u.role === 'pm' || u.role === 'pl' || u.viewAll;
@@ -738,7 +811,9 @@ const Mock = (() => {
       need(i.startDate && (i.endDate || i.startDate) >= i.startDate, '날짜를 확인하세요.');
       const row = { id: ex ? ex.id : 'T' + Date.now(), part, title: i.title.trim(), category: i.category, startDate: i.startDate, endDate: i.endDate || i.startDate,
         time: i.time || '', assignees: vis === 'private' ? [ex ? ex.createdBy : u.email] : (i.assignees || []).slice(0, 10), status: i.status || '예정', visibility: vis, memo: i.memo || '', createdBy: ex ? ex.createdBy : u.email };
-      db.tasks = db.tasks.filter((t) => t.id !== row.id).concat([row]); persist();
+      db.tasks = db.tasks.filter((t) => t.id !== row.id).concat([row]);
+      log(u, 'task', ex ? '수정' : '등록', '', vis === 'private' ? `[${part}] (나만 보기 업무)` : `[${part}] ${row.title} ${fmtRange(row)}`);
+      taskNews(u, ex, row); persist();
       return this.getTasks(token);
     },
     deleteTask(token, id) {
@@ -746,7 +821,9 @@ const Mock = (() => {
       const t = (db.tasks || []).find((x) => x.id === id);
       need(t, '이미 삭제된 업무 일정입니다.');
       need(t.visibility === 'private' ? t.createdBy === u.email : u.role === 'pm' || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part), '작성자, 해당 파트 PL, PM만 삭제할 수 있습니다.');
-      db.tasks = db.tasks.filter((x) => x.id !== id); persist();
+      db.tasks = db.tasks.filter((x) => x.id !== id);
+      log(u, 'task', '삭제', '', t.visibility === 'private' ? `[${t.part}] (나만 보기 업무)` : `[${t.part}] ${t.title} ${fmtRange(t)}`);
+      taskNews(u, t, null); persist();
       return this.getTasks(token);
     },
     saveEvent(token, e) {
@@ -755,10 +832,30 @@ const Mock = (() => {
       need(e.startDate && (e.endDate || e.startDate) >= e.startDate, '날짜를 확인하세요.');
       const row = { id: e.id || 'E' + Date.now(), title: e.title.trim(), startDate: e.startDate, endDate: e.endDate || e.startDate, time: e.time || '', memo: e.memo || '',
         createdAt: ((db.events || []).find((x) => x.id === e.id) || {}).createdAt || new Date().toISOString() };
-      db.events = (db.events || []).filter((x) => x.id !== row.id).concat([row]); return result(a);
+      const old = (db.events || []).find((x) => x.id === row.id);
+      db.events = (db.events || []).filter((x) => x.id !== row.id).concat([row]);
+      const desc = (x) => `${x.title} ${fmtRange(x)}${x.time ? ' ' + x.time : ''}`;
+      log(a, 'event', old ? '수정' : '등록', '', old && desc(old) !== desc(row) ? `${desc(old)} → ${desc(row)}` : desc(row));
+      if (row.endDate >= todayStr() && (!old || desc(old) !== desc(row))) push(a, db.users.map((x) => x.email), `${old ? '중요 일정 변경' : '새 중요 일정'}: ${desc(row)}`, 'day:' + row.startDate);
+      return result(a);
     },
     deleteEvent(token, id) {
-      const a = admin(token); db.events = (db.events || []).filter((x) => x.id !== id); return result(a);
+      const a = admin(token); const ev = (db.events || []).find((x) => x.id === id);
+      db.events = (db.events || []).filter((x) => x.id !== id);
+      if (ev) {
+        log(a, 'event', '삭제', '', `${ev.title} ${fmtRange(ev)}`);
+        if (ev.endDate >= todayStr()) push(a, db.users.map((x) => x.email), `중요 일정 취소: ${ev.title} ${fmtRange(ev)}`, 'tab:events');
+      }
+      return result(a);
+    },
+    getHistory(token) {
+      admin(token);
+      return { items: (db.history || []).slice().reverse().sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0)), days: 90 };
+    },
+    markNewsRead(token) {
+      const u = auth(token); const n = (db.news || {})[u.email];
+      if (!n) return { seenAt: '' };
+      n.seenAt = new Date().toISOString(); persist(); return { seenAt: n.seenAt };
     },
     saveHoliday(token, h) {
       const a = admin(token); need(h.date && (h.name || '').trim(), '날짜와 이름을 입력하세요.');
@@ -861,7 +958,7 @@ function render() {
 
   derive();
   const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['work', '업무 일정'], ['mine', '내 일정']];
-  if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일']);
+  if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일'], ['history', '변경 이력']);
   else if (canSeeAll()) tabs.push(['all', '전체 일정']);
   else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
   if (!tabs.some((t) => t[0] === ui.tab)) ui.tab = 'cal';
@@ -871,12 +968,13 @@ function render() {
       <div class="brand">
         <h1>슈퍼쏠 전담반 일정</h1>
         <span style="display:flex;align-items:center;gap:2px">
+        ${bellButton()}
         <button class="icon-btn ghost-btn" data-act="refresh" title="최신 내용 불러오기" aria-label="최신 내용 불러오기">↻</button>
         <button class="whoami btn ghost sm" data-act="account">${esc(S.me.name)} <span class="badge ${canSeeTeam() ? 'admin' : ''}">${esc(roleLabel(S.me))}</span> ▾</button></span>
       </div>
       <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}</button>`).join('')}</nav>
     </div></header>
-    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays })[ui.tab]()}</main>`;
+    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays, history: viewHistory })[ui.tab]()}</main>`;
 }
 
 function previewBar() {
@@ -1518,6 +1616,90 @@ function viewAll() {
       <tbody>${rows}</tbody></table></div>`}`;
 }
 
+/* ---------- 새 소식 (전 직원) ---------- */
+function bellButton() {
+  const n = (S.news && S.news.unread) || 0;
+  return `<button class="icon-btn ghost-btn bell" data-act="news" title="새 소식" aria-label="새 소식${n ? ' ' + n + '개' : ''}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    ${n ? `<span class="nbadge">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
+}
+
+/** '방금' · 'N분 전' · 'N시간 전' · '10/3 14:02' */
+function agoText(iso) {
+  const d = new Date(iso);
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return '방금';
+  if (mins < 60) return `${mins}분 전`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}시간 전`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openNews() {
+  const n = S.news || { items: [], unread: 0, seenAt: '' };
+  const seen = n.seenAt || '';
+  openModal(`<header><h3>새 소식</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      ${n.items.length ? n.items.map((x) => `<div class="news-item ${x.at > seen ? 'unread' : ''}" ${x.go ? `data-act="newsGo" data-v="${esc(x.go)}"` : ''}>
+        <div class="nt">${esc(x.text)}</div><div class="when">${esc(agoText(x.at))}</div></div>`).join('') : '<div class="empty">새 소식이 없습니다.</div>'}
+      <p class="muted small" style="margin:12px 0 0">나를 대직자로 지정하거나, 나에게 업무가 배정되거나, 중요 일정이 바뀌면 여기에 알려드려요. 내가 한 일은 오지 않아요.</p>
+    </div>`);
+  if (n.unread) {
+    n.unread = 0;
+    render(); // 숫자 표시 없애기 (열린 창은 그대로)
+    api('markNewsRead').then((r) => { if (S && S.news) S.news.seenAt = r.seenAt || S.news.seenAt; }).catch(() => {});
+  }
+}
+
+/** 소식을 누르면 해당 날짜(캘린더) 또는 탭으로 */
+function goNews(go) {
+  closeModal();
+  const i = go.indexOf(':');
+  const kind = go.slice(0, i), val = go.slice(i + 1);
+  if (kind === 'day') {
+    const d = parse(val);
+    ui.tab = 'cal'; ui.month = new Date(d.getFullYear(), d.getMonth(), 1);
+    render(); window.scrollTo(0, 0); openDay(val);
+  } else if (kind === 'tab') {
+    ui.tab = val; render(); window.scrollTo(0, 0);
+  }
+}
+
+/* ---------- 변경 이력 (PM) ---------- */
+const KIND_LABELS = { leave: '휴가', task: '업무', event: '중요 일정', user: '팀원', holiday: '공휴일', login: '로그인' };
+const HX = { loaded: false, loading: false, error: '', items: [], kind: '', who: '', noLogin: true, limit: 200 };
+
+function loadHistory() {
+  HX.loading = true; HX.error = '';
+  api('getHistory')
+    .then((r) => { HX.items = r.items || []; HX.loaded = true; })
+    .catch((e) => { HX.error = (e && e.message) || '변경 이력을 불러오지 못했습니다.'; })
+    .finally(() => { HX.loading = false; if (ui.tab === 'history') render(); });
+}
+
+function viewHistory() {
+  if (!HX.loaded && !HX.loading && !HX.error) loadHistory();
+  const head = `<div class="section-title" style="margin-top:0"><span>변경 이력 <span class="muted small">최근 90일</span></span>
+    <button class="btn sm" data-act="reloadHistory">새로 불러오기</button></div>`;
+  if (!HX.loaded) return head + `<div class="card empty">${HX.error ? esc(HX.error) : '불러오는 중…'}</div>`;
+  const people = S.users.slice().sort((a, b) => a.name.localeCompare(b.name));
+  let list = HX.items;
+  if (HX.kind) list = list.filter((h) => h.kind === HX.kind);
+  else if (HX.noLogin) list = list.filter((h) => h.kind !== 'login');
+  if (HX.who) list = list.filter((h) => h.actor === HX.who || h.owner === HX.who);
+  const when = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const row = (h) => `<div class="hrow"><div class="hwhen">${when(h.at)}</div><div class="hbody">
+      <div><b>${esc(nameOf(h.actor))}</b> <span class="badge">${esc(KIND_LABELS[h.kind] || h.kind)} ${esc(h.action)}</span>${h.owner && h.owner !== h.actor ? ` <span class="muted small">대상: ${esc(nameOf(h.owner))}</span>` : ''}</div>
+      ${h.summary ? `<div class="muted small hsum">${esc(h.summary)}</div>` : ''}</div></div>`;
+  return head + `<div class="filters">
+      <select data-act="hfilter" data-k="kind"><option value="">전체 종류</option>${Object.keys(KIND_LABELS).map((k) => `<option value="${k}" ${HX.kind === k ? 'selected' : ''}>${KIND_LABELS[k]}</option>`).join('')}</select>
+      <select data-act="hfilter" data-k="who"><option value="">전체 사람</option>${people.map((u) => `<option value="${esc(u.email)}" ${HX.who === u.email ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>
+      ${HX.kind ? '' : `<label class="toggle"><input type="checkbox" data-act="hfilter" data-k="noLogin" ${HX.noLogin ? 'checked' : ''}> 로그인 기록 숨기기</label>`}
+    </div>
+    ${list.length ? `<div class="card">${list.slice(0, HX.limit).map(row).join('')}</div>` : '<div class="card empty">기록이 없습니다.</div>'}
+    ${list.length > HX.limit ? `<button class="btn" data-act="moreHistory" style="margin-top:10px">더 보기 (${list.length - HX.limit}건 남음)</button>` : ''}
+    <p class="muted small">사람을 고르면 그 사람이 한 일과 그 사람에 대한 변경(예: PM이 그 사람 일정을 수정)이 함께 보입니다. 대상이 삭제된 직원이면 이메일로 표시됩니다.</p>`;
+}
+
 /* ---------- 팀원 관리 (관리자) ---------- */
 function viewMembers() {
   const byName = (a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'pl' ? -1 : 1);
@@ -2083,6 +2265,7 @@ document.addEventListener('click', (e) => {
     case 'tab':
       if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
       else ui.tab = v;
+      if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
       render(); window.scrollTo(0, 0); break;
     case 'month': {
       const t0 = new Date();
@@ -2110,6 +2293,10 @@ document.addEventListener('click', (e) => {
     case 'wview': ui.workView = v; render(); break;
     case 'wsum': openWorkGroup(v); break;
     case 'weekAbsent': openWeekAbsent(v); break;
+    case 'news': openNews(); break;
+    case 'newsGo': goNews(v); break;
+    case 'reloadHistory': HX.loaded = false; HX.error = ''; render(); break;
+    case 'moreHistory': HX.limit += 200; render(); break;
     case 'newTask': openTaskForm(null, v); break;
     case 'editTask': openTaskForm(v); break;
     case 'delTask': removeTask(v); break;
@@ -2141,6 +2328,7 @@ document.addEventListener('change', (e) => {
       break;
     }
     case 'filter': ui.allFilter[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; render(); break;
+    case 'hfilter': HX[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; HX.limit = 200; render(); break;
     case 'switch':
       if (t.value === '__setup') { Mock._empty(); setToken(''); }
       else if (t.value === '__logout') { if (!Mock._db().users.length) Mock._reset(); setToken(''); }
