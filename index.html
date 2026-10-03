@@ -53,6 +53,7 @@
     font-size: 14px; line-height: 1.45; -webkit-text-size-adjust: 100%;
   }
   button, input, select, textarea { font: inherit; color: inherit; }
+  .plink { color: var(--primary); cursor: pointer; font-weight: 600; }
   .num-input { padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 64px; text-align: right; }
   button { cursor: pointer; }
 
@@ -720,8 +721,9 @@ const Mock = (() => {
       const ex = input.id ? db.leaves.find((l) => l.id === input.id) : null;
       if (input.id) need(ex, '일정을 찾을 수 없습니다.');
       if (ex) need(u.role === 'pm' || ex.email === u.email, '본인 일정만 수정할 수 있습니다.');
+      if (ex) need(u.role === 'pm' || ex.endDate >= todayStr(), '지난 일정은 PM만 수정할 수 있습니다.');
       const l = normalize(u, input, ex);
-      need(l.substitutes.length, '대직자를 1명 이상 지정해야 합니다.');
+      need(l.substitutes.length || (u.role === 'pm' && l.endDate < todayStr()), '대직자를 1명 이상 지정해야 합니다.');
       need(l.substitutes.length <= MAX_SUBS, `대직자는 최대 ${MAX_SUBS}명까지 지정할 수 있습니다.`);
       need(!l.substitutes.includes(l.email), '본인을 대직자로 지정할 수 없습니다.');
       need(!dupOf(l), '이미 등록된 일정과 겹칩니다.');
@@ -738,6 +740,7 @@ const Mock = (() => {
       const u = auth(token); const ex = db.leaves.find((l) => l.id === id);
       need(ex, '이미 삭제된 일정입니다.');
       need(u.role === 'pm' || ex.email === u.email, '본인 일정만 삭제할 수 있습니다.');
+      need(u.role === 'pm' || ex.endDate >= todayStr(), '지난 일정은 PM만 삭제할 수 있습니다.');
       db.leaves = db.leaves.filter((l) => l.id !== id);
       log(u, 'leave', '삭제', ex.email, `${ex.type} ${fmtRange(ex)} · 대직 ${ex.substitutes.map(nameOf).join(', ')}${ex.memo ? ' · 메모: ' + ex.memo : ''}`);
       leaveNews(u, ex, null);
@@ -948,7 +951,8 @@ const nameOf = (email) => { const u = S.users.find((x) => x.email === email); re
 const partOf = (email) => (S.users.find((x) => x.email === email) || {}).part || '';
 /** 전체 조회 권한자가 파트 필터를 고르면 그 파트 일정만 */
 const scoped = () => (canSeeAll() && ui.part ? S.leaves.filter((l) => partOf(l.email) === ui.part) : S.leaves);
-const canEdit = (l) => isAdmin() || l.email === S.me.email;
+// 본인은 지나지 않은 일정만, PM은 지난 일정까지 수정·삭제
+const canEdit = (l) => isAdmin() || (l.email === S.me.email && l.endDate >= todayStr());
 const conflictsOf = (l) => l.conflicts || [];
 
 function derive() {
@@ -1651,15 +1655,29 @@ function viewAll() {
   const people = S.users.filter((u) => !part || u.part === part);
   let list = scoped().slice();
   if (f.member) list = list.filter((l) => l.email === f.member);
+  // 한 사람을 고르면 지난 일정까지 모두 (예정 → 지난 순), 아니면 예정된 일정 또는 고른 달
+  const personAll = !!f.member && !f.month;
   if (f.month) list = list.filter((l) => l.startDate.slice(0, 7) <= f.month && f.month <= l.endDate.slice(0, 7));
-  else list = list.filter((l) => l.endDate >= today);
+  else if (!personAll) list = list.filter((l) => l.endDate >= today);
   if (f.warnOnly) list = list.filter((l) => conflictsOf(l).length);
   list.sort((a, b) => a.startDate.localeCompare(b.startDate) || nameOf(a.email).localeCompare(nameOf(b.email)));
+  const listHtml = (ls) => (ls.length ? ls.map((l) => leaveItem(l, { showName: true })).join('') : '<div class="card empty">해당하는 일정이 없습니다.</div>');
+  let personHtml = '';
+  if (personAll) {
+    const coming = list.filter((l) => l.endDate >= today);
+    const past = list.filter((l) => l.endDate < today).reverse();
+    const pu = S.users.find((u) => u.email === f.member) || { email: f.member, name: nameOf(f.member) };
+    const an = annualOf(f.member, pu.annual || (f.member === S.me.email ? S.me.annual : null), year);
+    personHtml = `<div class="infobox" style="margin:0 0 12px"><b>${esc(pu.name)}</b> · ${year}년 연차 사용 ${an.used}일 (예정 포함)${an.granted !== null ? ` · 부여 ${an.granted}일 · <b>남은 휴가 ${an.left}일</b>` : ''}
+      <span class="muted small"> · 지난 일정 포함 전체 ${list.length}건</span></div>
+      <div class="section-title" style="margin-top:0">예정된 일정 <span class="muted small">${coming.length}건</span></div><div class="list">${listHtml(coming)}</div>
+      <div class="section-title">지난 일정 <span class="muted small">${past.length}건 · 최근 순${isAdmin() ? ' · PM은 지난 일정도 수정할 수 있어요' : ''}</span></div><div class="list">${listHtml(past)}</div>`;
+  }
 
   const rows = usagePeople.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => {
     const ls = S.leaves.filter((l) => l.email === u.email && l.startDate.startsWith(year));
     const sum = (pred) => ls.filter(pred).reduce((s, l) => s + workdays(l), 0);
-    return `<tr><td>${esc(u.name)}${isAdmin() && u.part ? ` <span class="muted small">${esc(u.part)}</span>` : ''}</td>
+    return `<tr><td><span class="plink" data-act="pickMember" data-v="${esc(u.email)}" title="${esc(u.name)}님 일정 전체 보기">${esc(u.name)}</span>${isAdmin() && u.part ? ` <span class="muted small">${esc(u.part)}</span>` : ''}</td>
       <td class="num">${sum((l) => l.type === '연차')}</td>
       <td class="num">${sum((l) => HALF[l.type])}</td>
       <td class="num"><b>${sum((l) => l.type === '연차' || HALF[l.type])}</b></td>
@@ -1677,14 +1695,14 @@ function viewAll() {
       <select data-act="filter" data-k="member"><option value="">${part ? esc(part) + ' 전체' : '전체 팀원'}</option>
         ${people.map((u) => `<option value="${esc(u.email)}" ${f.member === u.email ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>
       <input type="month" data-act="filter" data-k="month" value="${f.month}">
-      ${f.month ? '<button class="btn sm ghost" data-act="clearMonth">예정 일정 보기</button>' : '<span class="muted small">예정된 일정 표시 중</span>'}
+      ${f.month ? `<button class="btn sm ghost" data-act="clearMonth">${f.member ? '전체 기간 보기' : '예정 일정 보기'}</button>` : `<span class="muted small">${f.member ? '지난 일정 포함 전체 표시 중' : '예정된 일정 표시 중 · 사람을 고르면 지난 일정까지 보여요'}</span>`}
       <label class="toggle"><input type="checkbox" data-act="filter" data-k="warnOnly" ${f.warnOnly ? 'checked' : ''}> 겹침 경고만</label>
       <span style="flex:1"></span>
       ${isAdmin() ? '<button class="btn" data-act="bulkLeaves">휴가 일괄 등록</button><button class="btn primary" data-act="newLeave">+ 대리 등록</button>' : ''}
     </div>
-    ${isAdmin() ? '' : `<div class="infobox" style="margin:0 0 12px">${canSeeAll() ? '전체 직원' : esc(part) + ' 파트원'}의 일정을 볼 수 있습니다. 수정·삭제는 본인 또는 PM만 할 수 있습니다.</div>`}
-    <div class="list">${list.length ? list.map((l) => leaveItem(l, { showName: true })).join('') : '<div class="card empty">해당하는 일정이 없습니다.</div>'}</div>
-    ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${usagePart ? esc(usagePart) + ' 파트' : '팀원별'} 사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함)</span></span>
+    ${isAdmin() ? '' : `<div class="infobox" style="margin:0 0 12px">${canSeeAll() ? '전체 직원' : esc(part) + ' 파트원'}의 일정을 볼 수 있습니다. 수정·삭제는 본인(지나지 않은 일정) 또는 PM만 할 수 있습니다.</div>`}
+    ${personAll ? personHtml : `<div class="list">${listHtml(list)}</div>`}
+    ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${usagePart ? esc(usagePart) + ' 파트' : '팀원별'} 사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
       ${isAdmin() ? '<button class="btn sm" data-act="annualForm">휴가 일수 입력</button>' : ''}</div>
     <div class="card table-wrap"><table>
       <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th>${isAdmin() ? '<th class="num">부여 합계</th><th class="num">남은 휴가</th>' : ''}</tr></thead>
@@ -1988,7 +2006,7 @@ const GUIDE = [
     { x: '[+ 일정 등록]에서 유형(연차 · 오전/오후반차 · 병가 · 연수/교육 · 기타)과 날짜, 대직자(1~3명, 필수)를 정해요.' },
     { x: '대직자가 같은 날 부재이면 ⚠ 경고가 떠요. 경고가 있어도 등록은 돼요.' },
     { x: '오른쪽 위 이름 메뉴에서 기본 대직자를 정해 두면 등록할 때 자동으로 채워져요.' },
-    { x: '수정 · 삭제는 [내 일정] 탭에서 본인 일정만 할 수 있어요.' },
+    { x: '수정 · 삭제는 [내 일정] 탭에서 본인 일정만 할 수 있어요. 이미 지난 일정은 PM만 고칠 수 있으니 PM에게 요청하세요.' },
     { x: '[내 일정] 탭 맨 위에서 올해 휴가 사용 일수와 남은 휴가를 볼 수 있어요(예정 포함, 참고용). 남은 휴가는 PM이 일반 · 특별 · 대체휴가 부여 일수를 입력하면 보여요.' },
   ] },
   { t: '누구의 일정이 보이나요', items: [
@@ -2030,6 +2048,8 @@ const UPDATES = [
     { x: '[내 일정]에서 올해 남은 휴가를 볼 수 있어요(PM이 일반 · 특별 · 대체휴가 일수를 입력하면 표시, 참고용).' },
     { r: 'pm', x: '[전체 일정] → 사용 현황의 [휴가 일수 입력]에서 일반 · 특별 · 대체휴가를 나눠 입력할 수 있어요.' },
     { r: 'pm', x: '[전체 일정] → [휴가 일괄 등록]: 그룹웨어 휴가 목록을 복사해 붙여넣으면 지난 휴가를 한 번에 등록해요.' },
+    { r: 'team', x: '[전체 일정]에서 사람을 고르면 그 사람의 지난 일정까지 모두 보여요. 사용 현황 표의 이름을 눌러도 돼요.' },
+    { x: '이미 지난 휴가는 본인이 수정 · 삭제할 수 없고 PM만 고칠 수 있어요.' },
   ] },
   { d: '2026-10-02', items: [
     { x: 'PM · PL의 휴가가 전 직원에게 보여요.' },
@@ -2213,7 +2233,8 @@ function openLeaveForm(id, date, restore) {
 
   q('[data-save]').onclick = async () => {
     if (!f.startDate) return toast('날짜를 선택하세요.', true);
-    if (!chosen().length) { q('[data-sub="0"]').focus(); return toast('대직자를 1명 이상 지정해야 합니다.', true); }
+    const end = HALF[f.type] ? f.startDate : f.endDate || f.startDate;
+    if (!chosen().length && !(isAdmin() && end < todayStr())) { q('[data-sub="0"]').focus(); return toast('대직자를 1명 이상 지정해야 합니다.', true); }
     const p = payload();
     loading(true);
     let r;
@@ -2649,6 +2670,7 @@ document.addEventListener('click', (e) => {
     case 'delHoliday': confirmBox('공휴일 삭제', `<p>${fmtShort(v)} ${esc(D.holidays[v] || '')}을(를) 삭제할까요?</p>`, '삭제', true).then((ok) => ok && run(api('deleteHoliday', v), '삭제했습니다.')); break;
     case 'holYear': ui.holYear += Number(v); render(); break;
     case 'clearMonth': ui.allFilter.month = ''; render(); break;
+    case 'pickMember': ui.allFilter = { member: v, month: '', warnOnly: false }; render(); window.scrollTo(0, 0); break;
     case 'account': openAccount(); break;
     case 'refresh': refreshData(true); break;
     case 'copyAttendance': copyText(attendanceText(v)); break;
