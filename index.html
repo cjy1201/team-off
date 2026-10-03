@@ -1667,7 +1667,7 @@ function viewMine() {
 function viewAll() {
   const f = ui.allFilter, today = todayStr(), year = today.slice(0, 4);
   const part = canSeeAll() ? ui.part : S.me.part;
-  // 휴가 사용 현황(개수)은 PM 전체, PL은 자기 파트만, '전체 일정 조회' 권한자는 외부직원(부여 일수가 입력된 사람)만
+  // 휴가 사용 현황(개수)은 PM 전체, PL은 자기 파트만, '전체 일정 조회' 권한자는 부여 일수가 입력된 사람만
   const extOnly = !isAdmin() && !isPL() && !!S.me.viewAll;
   const usagePart = isAdmin() ? part : isPL() ? S.me.part : extOnly ? part || '' : null;
   const usagePeople = usagePart === null ? [] : S.users.filter((u) => (!usagePart || u.part === usagePart) && (!extOnly || annualOf(u.email, u.annual, year).granted !== null));
@@ -1722,7 +1722,7 @@ function viewAll() {
     </div>
     ${isAdmin() ? '' : `<div class="infobox" style="margin:0 0 12px">${canSeeAll() ? '전체 직원' : esc(part) + ' 파트원'}의 일정을 볼 수 있습니다. 수정·삭제는 본인(지나지 않은 일정) 또는 PM만 할 수 있습니다.</div>`}
     ${personAll ? personHtml : `<div class="list">${listHtml(list)}</div>`}
-    ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${extOnly ? '외부직원 ' : ''}${usagePart ? esc(usagePart) + ' 파트' : extOnly ? '' : '팀원별'} 사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
+    ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${usagePart ? esc(usagePart) + ' 파트 ' : extOnly ? '휴가 ' : '팀원별 '}사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
       ${isAdmin() ? '<button class="btn sm" data-act="annualForm">휴가 일수 입력</button>' : ''}</div>
     <div class="card table-wrap"><table>
       <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th>${showAnnual ? '<th class="num">부여 합계</th><th class="num">남은 휴가</th>' : ''}</tr></thead>
