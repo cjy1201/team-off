@@ -21,6 +21,7 @@
     --t-annual: #2563eb; --t-am: #0d9488; --t-pm: #7c3aed; --t-sick: #ea580c; --t-edu: #db2777; --t-etc: #64748b; --evt: #b45309; --evt-bg: #fff7ed;
     --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
     --radius: 12px;
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -30,6 +31,7 @@
       --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
       --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --evt: #fbbf24; --evt-bg: #2a2110;
       --shadow: none;
+      color-scheme: dark; /* 입력칸·달력 선택창 같은 브라우저 기본 부품도 어둡게 */
     }
   }
   :root[data-theme="dark"] {
@@ -39,6 +41,7 @@
     --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
     --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --evt: #fbbf24; --evt-bg: #2a2110;
     --shadow: none;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
@@ -50,6 +53,7 @@
     font-size: 14px; line-height: 1.45; -webkit-text-size-adjust: 100%;
   }
   button, input, select, textarea { font: inherit; color: inherit; }
+  .num-input { padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 64px; text-align: right; }
   button { cursor: pointer; }
 
   .preview-bar { background: #111827; color: #f9fafb; font-size: 12px; padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -1687,7 +1691,7 @@ function openAnnualForm(year) {
         <thead><tr><th>이름</th><th class="num">사용</th>${ANNUAL_KINDS.map((k) => `<th class="num">${k}</th>`).join('')}</tr></thead>
         <tbody>${people.map((u) => `<tr><td style="white-space:nowrap">${esc(u.name)} <span class="muted small">${esc(u.part || 'PM')}</span></td>
           <td class="num">${annualOf(u.email, u.annual, year).used}</td>
-          ${ANNUAL_KINDS.map((k) => `<td class="num"><input type="number" min="0" max="60" step="0.5" inputmode="decimal" data-email="${esc(u.email)}" data-kind="${k}" value="${cur(u, k)}" style="width:64px;text-align:right"></td>`).join('')}</tr>`).join('')}
+          ${ANNUAL_KINDS.map((k) => `<td class="num"><input type="number" min="0" max="60" step="0.5" inputmode="decimal" data-email="${esc(u.email)}" data-kind="${k}" value="${cur(u, k)}" class="num-input"></td>`).join('')}</tr>`).join('')}
         </tbody></table></div>
     </div>
     <footer><span class="spacer"></span><button class="btn primary" data-save>저장</button></footer>`);
