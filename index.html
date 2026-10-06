@@ -90,6 +90,7 @@
 
   /* summary */
   .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .stats.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .stat { padding: 12px 14px; min-width: 0; }
   .stat .label { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
@@ -269,6 +270,7 @@
     main { padding: 12px; }
     .brand h1 { font-size: 15px; }
     .stats { gap: 6px; }
+    .stats.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .stat { padding: 10px; }
     .stat .value { font-size: 18px; }
     .stat .label, .stat .sub { font-size: 11px; }
@@ -981,6 +983,11 @@ function annualOf(email, map, year) {
  * 수정이면 원래 일정의 일수는 돌려놓고 계산한다
  */
 function annualShortage(p, ex) {
+  const a = annualAfter(p, ex);
+  return a && a.need > a.left ? a : null;
+}
+/** 이 연차·반차를 등록하면 남은 휴가가 어떻게 되는지 (부여 일수 입력한 사람만, 아니면 null) */
+function annualAfter(p, ex) {
   const counts = (l) => l && (l.type === '연차' || HALF[l.type]);
   if (!counts(p) || !p.startDate) return null;
   const year = p.startDate.slice(0, 4);
@@ -991,7 +998,7 @@ function annualShortage(p, ex) {
   const back = ex && counts(ex) && ex.email === owner && ex.startDate.startsWith(year) ? workdays(ex) : 0;
   const need = workdays({ ...p, endDate: HALF[p.type] ? p.startDate : p.endDate || p.startDate });
   const left = an.left + back;
-  return need > left ? { year, left, need, after: left - need } : null;
+  return { year, left, need, after: left - need };
 }
 /** '일반 15 · 대체 1' */
 const annualBreak = (an) => ANNUAL_KINDS.filter((k) => typeof an.kinds[k] === 'number').map((k) => `${k.slice(0, 2)} ${an.kinds[k]}`).join(' · ');
@@ -1161,7 +1168,12 @@ function viewCalendar() {
       ['대직자 겹침', `${warn.length}건`, warn.length ? '확인 필요 ⚠' : '문제 없음', warn.length, warn.length ? 'mine' : ''],
     ];
   }
-  const statsHtml = `<div class="stats">${stats.map(([label, value, sub, warn, go]) => `
+  // 부여 일수가 입력된 사람: 팀 카드 옆에 '내 남은 휴가' (본인 일정만 보는 사람은 이미 카드에 있음)
+  if (canSeeTeam()) {
+    const an = annualOf(me, S.me.annual, year);
+    if (an.granted !== null) stats.push(['내 남은 휴가', `${an.left}일`, `${an.granted}일 중 ${an.used}일 사용 · 참고용`, an.left < 0, 'mine']);
+  }
+  const statsHtml = `<div class="stats${stats.length > 3 ? ' four' : ''}">${stats.map(([label, value, sub, warn, go]) => `
     <div class="card stat ${warn ? 'warn' : ''}" ${go ? `data-act="${go.act || 'tab'}" data-v="${go.v || go}" style="cursor:pointer"` : ''}>
       <div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`).join('')}</div>`;
 
@@ -2233,7 +2245,9 @@ function openLeaveForm(id, date, restore) {
     q('[data-savedefault]').checked = f.saveDefault;
     f.showDef = showDef;
     const evs = f.startDate ? (S.events || []).filter((e) => e.startDate <= f.endDate && f.startDate <= e.endDate) : [];
+    const an = annualAfter(f, ex);
     q('[data-days]').innerHTML = (f.startDate ? `<div class="infobox">사용일수 <b>${workdays(f)}일</b> <span class="small">(주말·공휴일 제외)</span></div>` : '')
+      + (an ? `<div class="${an.after < 0 ? 'warnbox' : 'infobox'}">${f.email !== S.me.email ? esc(nameOf(f.email)) + '님 ' : ''}${an.year}년 남은 휴가 <b>${an.left}일</b> → ${ex ? '저장' : '등록'} 후 <b>${an.after}일</b>${an.after < 0 ? ' (남은 휴가를 넘습니다)' : ''} <span class="small muted">· 참고용</span></div>` : '')
       + (evs.length ? `<div class="infobox" style="color:var(--evt)"><b>★ 이 기간에 중요 일정이 있습니다</b>${evs.map((e) => `<div>· ${esc(evtWhen(e))} ${esc(e.title)}</div>`).join('')}</div>` : '');
     if (f.startDate) check();
   };
