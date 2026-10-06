@@ -55,6 +55,9 @@
   button, input, select, textarea { font: inherit; color: inherit; }
   .plink { color: var(--primary); cursor: pointer; font-weight: 600; }
   .num-input { padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 64px; text-align: right; }
+  .grant-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .grant-row select, .grant-row input:not(.num-input) { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+  .grant-row input[data-f="note"] { flex: 1; min-width: 140px; }
   button { cursor: pointer; }
 
   .preview-bar { background: #111827; color: #f9fafb; font-size: 12px; padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -539,7 +542,7 @@ const Mock = (() => {
     const L = (email, type, s, e, subs, memo) => ({ id: 'L' + (++id), email, type, startDate: rel(s), endDate: rel(e), substitutes: [].concat(subs), memo: memo || '' });
     const yr = String(t.getFullYear());
     const U = (email, name, role, part, viewAll) => ({ email, name, role, part, viewAll: !!viewAll, password: PW, mustChange: false,
-      annual: ['lead@example.com', 'lee@example.com', 'park@example.com', 'choi@example.com'].includes(email) ? { [yr]: email === 'park@example.com' ? { 일반휴가: 15, 대체휴가: 1 } : { 일반휴가: 15 } } : {} });
+      annual: ['lead@example.com', 'lee@example.com', 'park@example.com', 'choi@example.com'].includes(email) ? { [yr]: email === 'park@example.com' ? { 일반휴가: 15, 내역: [{ kind: '대체휴가', days: 1, date: yr + '-09-21', note: '9/20 주말 근무' }] } : { 일반휴가: 15 } } : {} });
     return {
       users: [
         U('lead@example.com', '김팀장', 'pm', ''),
@@ -660,7 +663,10 @@ const Mock = (() => {
     return {
       me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {} },
       users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {} }
-        : u.role === 'member' && u.viewAll && x.annual && Object.keys(x.annual).length ? { email: x.email, name: x.name, part: x.part, annual: x.annual } : { email: x.email, name: x.name, part: x.part })),
+        : u.role === 'member' && u.viewAll && x.annual && Object.keys(x.annual).length
+          ? { email: x.email, name: x.name, part: x.part, annual: Object.fromEntries(Object.entries(x.annual).map(([y, k]) => [y, typeof k === 'object'
+            ? (({ 내역, ...rest }) => ({ ...rest, ...Object.fromEntries(GRANT_KINDS.filter((g) => (내역 || []).some((x2) => x2.kind === g)).map((g) => [g, 내역.filter((x2) => x2.kind === g).reduce((s2, x2) => s2 + x2.days, 0)])) }))(k) : k])) }
+          : { email: x.email, name: x.name, part: x.part })),
       leaves: db.leaves.filter(visible).map((l) => (brief(l) ? { ...l, memo: '', conflicts: [] } : { ...l, conflicts: conflictsOf(l) })),
       holidays: db.holidays,
       events: db.events || [],
@@ -870,23 +876,30 @@ const Mock = (() => {
     },
     setAnnualDays(token, year, days) {
       const a = admin(token); need(/^20\d{2}$/.test(String(year)), '연도를 확인하세요.');
-      const desc = (k) => (k && Object.keys(k).length ? ANNUAL_KINDS.filter((x) => x in k).map((x) => x.slice(0, 2) + ' ' + k[x]).join('·') : '-');
       const changes = [];
       Object.keys(days || {}).forEach((e) => {
         const u = db.users.find((x) => x.email === e); if (!u) return;
-        const entry = days[e] && typeof days[e] === 'object' ? days[e] : { 일반휴가: days[e] };
-        const map = { ...(u.annual || {}) }, before = desc(map[year]), k = { ...(map[year] || {}) };
-        ANNUAL_KINDS.forEach((kind) => {
-          if (!(kind in entry)) return;
-          const raw = String(entry[kind] == null ? '' : entry[kind]).trim();
-          if (raw === '') { delete k[kind]; return; }
-          const n = Number(raw); need(isFinite(n) && n >= 0 && n <= 60 && Math.round(n * 2) === n * 2, `${u.name}: ${kind} 일수는 0~60, 0.5일 단위로 입력하세요.`); k[kind] = n;
-        });
-        if (Object.keys(k).length) map[year] = k; else delete map[year];
-        if (before !== desc(map[year])) { u.annual = map; changes.push(`${u.name} ${before} → ${desc(map[year])}`); }
+        const raw = String((days[e] && typeof days[e] === 'object' ? days[e].일반휴가 : days[e]) ?? '').trim();
+        const map = { ...(u.annual || {}) }, k = { ...(map[year] || {}) }, before = k.일반휴가;
+        if (raw === '') delete k.일반휴가;
+        else { const n = Number(raw); need(isFinite(n) && n >= 0 && n <= 60 && Math.round(n * 2) === n * 2, `${u.name}: 일반휴가 일수는 0~60, 0.5일 단위로 입력하세요.`); k.일반휴가 = n; }
+        if (before !== k.일반휴가) { map[year] = k; u.annual = map; changes.push(`${u.name} 일반 ${before ?? '-'} → ${k.일반휴가 ?? '-'}`); }
       });
       if (changes.length) log(a, 'user', `${year}년 휴가 일수`, '', changes.join(', '));
       return result(a, { changed: changes.length });
+    },
+    setAnnualGrants(token, year, email, grants) {
+      const a = admin(token); const u = db.users.find((x) => x.email === email); need(u, '팀원을 찾을 수 없습니다.');
+      const list = (grants || []).map((g, i) => {
+        need(GRANT_KINDS.includes(g.kind), `${i + 1}번째 줄: 종류를 고르세요.`);
+        need(g.days > 0 && g.days <= 30 && Math.round(g.days * 2) === g.days * 2, `${i + 1}번째 줄: 일수는 0.5~30, 0.5일 단위로 입력하세요.`);
+        return { kind: g.kind, days: g.days, date: g.date || '', note: String(g.note || '').slice(0, 50) };
+      }).sort((x, y) => (x.date || '9999').localeCompare(y.date || '9999'));
+      const map = { ...(u.annual || {}) }, k = { ...(map[year] || {}) };
+      if (list.length) k.내역 = list; else delete k.내역;
+      map[year] = k; u.annual = map;
+      log(a, 'user', `${year}년 휴가 부여 내역`, email, list.map(grantText).join(', ') || '-');
+      return result(a, { changed: 1 });
     },
     bulkAddLeaves(token, rows) {
       const a = admin(token); need(rows && rows.length, '등록할 휴가가 없습니다.');
@@ -970,10 +983,20 @@ function derive() {
  * 사용(연차·반차, 예정 포함)은 합계에서 함께 뺀다. granted: 세 종류 합계 (입력 없으면 null)
  */
 const ANNUAL_KINDS = ['일반휴가', '특별휴가', '대체휴가'];
+const GRANT_KINDS = ['특별휴가', '대체휴가']; // 생길 때마다 한 줄씩 쌓는 부여 내역
 function annualOf(email, map, year) {
   const used = S.leaves.filter((l) => l.email === email && l.startDate.startsWith(year) && (l.type === '연차' || HALF[l.type])).reduce((s, l) => s + workdays(l), 0);
   const v = map ? map[year] : null;
-  const kinds = typeof v === 'number' ? { 일반휴가: v } : v && typeof v === 'object' ? v : {};
+  const src = typeof v === 'number' ? { 일반휴가: v } : v && typeof v === 'object' ? v : {};
+  // 특별·대체휴가는 부여 내역의 합계 (내역이 없으면 서버가 준 합계 — '전체 일정 조회' 권한자는 합계만 받음)
+  const list = Array.isArray(src.내역) ? src.내역 : [];
+  const kinds = { 내역: list };
+  if (typeof src.일반휴가 === 'number') kinds.일반휴가 = src.일반휴가;
+  GRANT_KINDS.forEach((k) => {
+    const mine = list.filter((g) => g.kind === k);
+    if (mine.length) kinds[k] = mine.reduce((sum, g) => sum + g.days, 0);
+    else if (!list.length && typeof src[k] === 'number') kinds[k] = src[k];
+  });
   const has = ANNUAL_KINDS.some((k) => typeof kinds[k] === 'number');
   const granted = has ? ANNUAL_KINDS.reduce((s, k) => s + (kinds[k] || 0), 0) : null;
   return { used, granted, kinds, left: granted === null ? null : granted - used };
@@ -1002,6 +1025,9 @@ function annualAfter(p, ex) {
 }
 /** '일반 15 · 대체 1' */
 const annualBreak = (an) => ANNUAL_KINDS.filter((k) => typeof an.kinds[k] === 'number').map((k) => `${k.slice(0, 2)} ${an.kinds[k]}`).join(' · ');
+/** 부여 내역 한 줄: '대체 10/1 1일 (9/20 주말 근무)' */
+const grantText = (g) => `${g.kind.slice(0, 2)} ${g.date ? Number(g.date.slice(5, 7)) + '/' + Number(g.date.slice(8)) + ' ' : ''}${g.days}일${g.note ? ` (${g.note})` : ''}`;
+const grantsHtml = (an) => (an.kinds.내역.length ? `<div class="small muted" style="margin-top:4px">특별 · 대체휴가 내역: ${an.kinds.내역.map((g) => esc(grantText(g))).join(' / ')}</div>` : '');
 
 function workdays(l) {
   let n = 0;
@@ -1663,7 +1689,7 @@ function viewMine() {
   return `
     <div class="${an.left !== null && an.left < 0 ? 'warnbox' : 'infobox'}" style="margin:0 0 4px"><b>${year}년 휴가</b> &nbsp;${an.granted === null
       ? `연차 ${an.used}일 사용 <span class="muted small">(예정 포함 · 부여 일수는 PM이 입력하면 남은 휴가가 표시돼요)</span>`
-      : `${an.granted}일 <span class="muted small">(${esc(annualBreak(an))})</span> 중 ${an.used}일 사용 · <b>남은 휴가 ${an.left}일</b> <span class="muted small">(연차·반차 사용, 예정 포함 · 참고용, 정확한 일수는 인사 시스템 기준)</span>`}</div>
+      : `${an.granted}일 <span class="muted small">(${esc(annualBreak(an))})</span> 중 ${an.used}일 사용 · <b>남은 휴가 ${an.left}일</b> <span class="muted small">(연차·반차 사용, 예정 포함 · 참고용, 정확한 일수는 인사 시스템 기준)</span>${grantsHtml(an)}`}</div>
     <div class="section-title" style="margin-top:12px">
       <span>예정된 내 일정</span>
       <button class="btn primary" data-act="newLeave">+ 일정 등록</button>
@@ -1700,8 +1726,8 @@ function viewAll() {
     const past = list.filter((l) => l.endDate < today).reverse();
     const pu = S.users.find((u) => u.email === f.member) || { email: f.member, name: nameOf(f.member) };
     const an = annualOf(f.member, pu.annual || (f.member === S.me.email ? S.me.annual : null), year);
-    personHtml = `<div class="infobox" style="margin:0 0 12px"><b>${esc(pu.name)}</b> · ${year}년 연차 사용 ${an.used}일 (예정 포함)${an.granted !== null ? ` · 부여 ${an.granted}일 · <b>남은 휴가 ${an.left}일</b>` : ''}
-      <span class="muted small"> · 지난 일정 포함 전체 ${list.length}건</span></div>
+    personHtml = `<div class="infobox" style="margin:0 0 12px"><b>${esc(pu.name)}</b> · ${year}년 연차 사용 ${an.used}일 (예정 포함)${an.granted !== null ? ` · 부여 ${an.granted}일 <span class="muted small">(${esc(annualBreak(an))})</span> · <b>남은 휴가 ${an.left}일</b>` : ''}
+      <span class="muted small"> · 지난 일정 포함 전체 ${list.length}건</span>${an.granted !== null ? grantsHtml(an) : ''}</div>
       <div class="section-title" style="margin-top:0">예정된 일정 <span class="muted small">${coming.length}건</span></div><div class="list">${listHtml(coming)}</div>
       <div class="section-title">지난 일정 <span class="muted small">${past.length}건 · 최근 순${isAdmin() ? ' · PM은 지난 일정도 수정할 수 있어요' : ''}</span></div><div class="list">${listHtml(past)}</div>`;
   }
@@ -1717,7 +1743,7 @@ function viewAll() {
       <td class="num">${sum((l) => l.type === '연수/교육')}</td>
       <td class="num">${sum((l) => l.type === '기타')}</td>${showAnnual ? (() => {
         const an = annualOf(u.email, u.annual, year);
-        return `<td class="num">${an.granted === null ? '<span class="muted">-</span>' : `<span title="${esc(annualBreak(an))}">${an.granted}</span>`}</td><td class="num">${an.left === null ? '<span class="muted">-</span>' : an.left < 0 ? `<b style="color:var(--danger)">${an.left}</b>` : `<b>${an.left}</b>`}</td>`;
+        return `<td class="num">${an.granted === null ? '<span class="muted">-</span>' : `<span title="${esc(annualBreak(an) + (an.kinds.내역.length ? '\n' + an.kinds.내역.map(grantText).join('\n') : ''))}">${an.granted}</span>`}</td><td class="num">${an.left === null ? '<span class="muted">-</span>' : an.left < 0 ? `<b style="color:var(--danger)">${an.left}</b>` : `<b>${an.left}</b>`}</td>`;
       })() : ''}</tr>`;
   }).join('');
 
@@ -1741,38 +1767,94 @@ function viewAll() {
       <tbody>${rows || `<tr><td colspan="9" class="muted">${extOnly ? '부여 일수가 입력된 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
 }
 
-/* ---------- 휴가 일수 입력 (PM) — 일반휴가·특별휴가·대체휴가 따로 ---------- */
-function openAnnualForm(year) {
+/* ---------- 휴가 일수 입력 (PM) — 일반휴가는 표에서, 특별·대체휴가는 사람별 부여 내역 ---------- */
+function openAnnualForm(year, draft) {
   const thisYear = Number(todayStr().slice(0, 4));
   year = String(year || thisYear);
+  draft = draft || {}; // 내역 창에 다녀오는 동안 표에 입력하던 일반휴가 값
   const people = S.users.slice().sort((a, b) => (a.part || '').localeCompare(b.part || '') || a.name.localeCompare(b.name));
-  const cur = (u, k) => { const an = annualOf(u.email, u.annual, year); return typeof an.kinds[k] === 'number' ? String(an.kinds[k]) : ''; };
+  const cur = (u) => { const an = annualOf(u.email, u.annual, year); return typeof an.kinds.일반휴가 === 'number' ? String(an.kinds.일반휴가) : ''; };
   const m = openModal(`<header><h3>휴가 일수 입력</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       <div class="filters" style="margin-bottom:8px">
         <select data-year>${[thisYear, thisYear + 1].map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select>
-        <span class="muted small">년에 부여된 일수 (0.5일 단위, 비우면 없음)</span>
+        <span class="muted small">년 부여 일수 (0.5일 단위, 비우면 없음)</span>
       </div>
-      <div class="infobox" style="margin:0 0 10px">남은 휴가 = 일반휴가 + 특별휴가 + 대체휴가 − 사용(연차·반차, 예정 포함). 본인과 PM만 볼 수 있고 참고용입니다.</div>
+      <div class="infobox" style="margin:0 0 10px">남은 휴가 = 일반휴가 + 특별휴가 + 대체휴가 − 사용(연차·반차, 예정 포함). 본인과 PM만 볼 수 있고 참고용입니다.<br>
+        <span class="muted small">특별휴가 · 대체휴가는 생길 때마다 [내역]에서 한 줄씩 추가하세요 (생긴 날 · 일수 · 사유). 합계는 자동으로 계산돼요.</span></div>
       <div class="card table-wrap"><table>
-        <thead><tr><th>이름</th><th class="num">사용</th>${ANNUAL_KINDS.map((k) => `<th class="num">${k}</th>`).join('')}</tr></thead>
-        <tbody>${people.map((u) => `<tr><td style="white-space:nowrap">${esc(u.name)} <span class="muted small">${esc(u.part || 'PM')}</span></td>
-          <td class="num">${annualOf(u.email, u.annual, year).used}</td>
-          ${ANNUAL_KINDS.map((k) => `<td class="num"><input type="number" min="0" max="60" step="0.5" inputmode="decimal" data-email="${esc(u.email)}" data-kind="${k}" value="${cur(u, k)}" class="num-input"></td>`).join('')}</tr>`).join('')}
+        <thead><tr><th>이름</th><th class="num">사용</th><th class="num">일반휴가</th><th class="num">특별휴가</th><th class="num">대체휴가</th><th></th></tr></thead>
+        <tbody>${people.map((u) => {
+          const an = annualOf(u.email, u.annual, year);
+          const n = an.kinds.내역.length;
+          return `<tr><td style="white-space:nowrap">${esc(u.name)} <span class="muted small">${esc(u.part || 'PM')}</span></td>
+          <td class="num">${an.used}</td>
+          <td class="num"><input type="number" min="0" max="60" step="0.5" inputmode="decimal" data-email="${esc(u.email)}" value="${esc(u.email in draft ? draft[u.email] : cur(u))}" class="num-input"></td>
+          <td class="num">${typeof an.kinds.특별휴가 === 'number' ? an.kinds.특별휴가 : '<span class="muted">-</span>'}</td>
+          <td class="num">${typeof an.kinds.대체휴가 === 'number' ? an.kinds.대체휴가 : '<span class="muted">-</span>'}</td>
+          <td><button class="btn sm" data-grants="${esc(u.email)}">내역${n ? ` ${n}` : ''}</button></td></tr>`;
+        }).join('')}
         </tbody></table></div>
     </div>
-    <footer><span class="spacer"></span><button class="btn primary" data-save>저장</button></footer>`);
-  m.querySelector('[data-year]').onchange = (e) => openAnnualForm(e.target.value);
-  m.querySelector('[data-save]').onclick = () => {
+    <footer><span class="spacer"></span><button class="btn primary" data-save>일반휴가 저장</button></footer>`);
+  const changed = () => {
     const days = {};
     m.querySelectorAll('input[data-email]').forEach((i) => {
       const u = S.users.find((x) => x.email === i.dataset.email);
-      if (u && i.value.trim() !== cur(u, i.dataset.kind)) (days[u.email] = days[u.email] || {})[i.dataset.kind] = i.value.trim();
+      if (u && i.value.trim() !== cur(u)) days[u.email] = i.value.trim();
     });
+    return days;
+  };
+  m.querySelector('[data-year]').onchange = (e) => openAnnualForm(e.target.value);
+  m.querySelectorAll('[data-grants]').forEach((b) => (b.onclick = () => openGrantForm(year, b.dataset.grants, changed())));
+  m.querySelector('[data-save]').onclick = () => {
+    const days = changed();
     if (!Object.keys(days).length) { closeModal(); return; }
-    run(api('setAnnualDays', year, days), `${year}년 휴가 일수를 저장했습니다.`);
+    run(api('setAnnualDays', year, days), `${year}년 일반휴가 일수를 저장했습니다.`);
   };
   m.querySelector('.modal').classList.add('wide');
+}
+
+/** 한 사람의 특별·대체휴가 부여 내역 (생긴 날 · 일수 · 사유) — 저장하면 휴가 일수 입력 표로 돌아감 */
+function openGrantForm(year, email, draft) {
+  const u = S.users.find((x) => x.email === email);
+  const an = annualOf(email, u.annual, year);
+  const rows = an.kinds.내역.map((g) => ({ ...g }));
+  const back = () => openAnnualForm(year, draft);
+  const m = openModal(`<header><h3>${esc(u.name)} · ${year}년 특별 · 대체휴가 내역</h3><button class="btn ghost sm" data-back>← 표로</button></header>
+    <div class="content"><div class="infobox" style="margin:0 0 10px">휴가가 생길 때마다 한 줄씩 추가하세요. 예: 대체휴가 · 10/1 · 1일 · 9/20 주말 근무<br>
+      <span class="muted small">사유는 본인과 PM에게만 보여요.</span></div>
+      <div data-rows></div>
+      <button class="btn sm" data-add style="margin-top:8px">+ 한 줄 추가</button>
+      <div data-sum class="muted small" style="margin-top:10px"></div></div>
+    <footer><button class="btn" data-back>취소</button><span class="spacer"></span><button class="btn primary" data-save>저장</button></footer>`);
+  m.querySelector('.modal').classList.add('wide');
+  const box = m.querySelector('[data-rows]');
+  const draw = () => {
+    box.innerHTML = rows.length ? rows.map((g, i) => `<div class="grant-row" data-i="${i}">
+      <select data-f="kind">${GRANT_KINDS.map((k) => `<option ${g.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
+      <input type="date" data-f="date" value="${esc(g.date || '')}" aria-label="생긴 날">
+      <input type="number" data-f="days" min="0.5" max="30" step="0.5" inputmode="decimal" value="${esc(String(g.days))}" class="num-input" aria-label="일수">
+      <input data-f="note" maxlength="50" placeholder="사유 (예: 9/20 주말 근무)" value="${esc(g.note || '')}">
+      <button class="btn sm danger" data-del="${i}" aria-label="삭제">✕</button></div>`).join('') : '<div class="card empty">내역이 없습니다. [+ 한 줄 추가]를 누르세요.</div>';
+    const sum = (k) => rows.filter((g) => g.kind === k).reduce((s2, g) => s2 + (Number(g.days) || 0), 0);
+    m.querySelector('[data-sum]').textContent = `합계: 특별휴가 ${sum('특별휴가')}일 · 대체휴가 ${sum('대체휴가')}일`;
+    box.querySelectorAll('[data-f]').forEach((el) => (el.oninput = el.onchange = () => {
+      const g = rows[+el.closest('[data-i]').dataset.i];
+      g[el.dataset.f] = el.value;
+      if (el.dataset.f === 'days' || el.dataset.f === 'kind') m.querySelector('[data-sum]').textContent = `합계: 특별휴가 ${sum('특별휴가')}일 · 대체휴가 ${sum('대체휴가')}일`;
+    }));
+    box.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => { rows.splice(+b.dataset.del, 1); draw(); }));
+  };
+  draw();
+  m.querySelector('[data-add]').onclick = () => { rows.push({ kind: '대체휴가', date: todayStr(), days: 1, note: '' }); draw(); };
+  m.querySelectorAll('[data-back]').forEach((b) => (b.onclick = back));
+  m.querySelector('[data-save]').onclick = () => {
+    const list = rows.map((g) => ({ kind: g.kind, date: g.date || '', days: Number(g.days), note: (g.note || '').trim() }));
+    const bad = list.findIndex((g) => !(g.days > 0));
+    if (bad >= 0) return toast(`${bad + 1}번째 줄: 일수를 입력하세요.`, true);
+    run(api('setAnnualGrants', year, email, list), `${u.name}님 ${year}년 내역을 저장했습니다.`, back);
+  };
 }
 
 /* ---------- 새 소식 (전 직원) ---------- */
@@ -2078,7 +2160,7 @@ const UPDATES = [
     { r: 'pm', x: '변경 이력 탭: 누가 언제 무엇을 바꿨는지 볼 수 있어요.' },
     { x: '사용 안내 페이지(지금 이 화면)가 생겼어요.' },
     { x: '[내 일정]에서 올해 남은 휴가를 볼 수 있어요(PM이 일반 · 특별 · 대체휴가 일수를 입력하면 표시, 참고용).' },
-    { r: 'pm', x: '[전체 일정] → 사용 현황의 [휴가 일수 입력]에서 일반 · 특별 · 대체휴가를 나눠 입력할 수 있어요.' },
+    { r: 'pm', x: '[전체 일정] → 사용 현황의 [휴가 일수 입력]에서 일반휴가 일수를 넣고, 특별 · 대체휴가는 [내역]에서 생길 때마다 날짜 · 일수 · 사유를 한 줄씩 추가해요.' },
     { r: 'pm', x: '[전체 일정] → [휴가 일괄 등록]: 그룹웨어 휴가 목록을 복사해 붙여넣으면 지난 휴가를 한 번에 등록해요.' },
     { r: 'team', x: '[전체 일정]에서 사람을 고르면 그 사람의 지난 일정까지 모두 보여요. 사용 현황 표의 이름을 눌러도 돼요.' },
     { x: '이미 지난 휴가는 본인이 수정 · 삭제할 수 없고 PM만 고칠 수 있어요.' },
