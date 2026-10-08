@@ -7,14 +7,34 @@
 //   BACKEND = 'gas' (기본) → Apps Script로 전달 / 'd1' → Cloudflare DB(D1)에서 직접 처리 (Code.gs 로직 그대로)
 //   MAINTENANCE = 'readonly' → 저장 요청만 잠시 막음 (DB 전환 순간에 사용)
 import { handleD1 } from '../lib/d1-backend.js';
+import { approveMyMeal, checkMyMeal } from '../lib/meal.js';
 
 const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzzzEiIUU3mQzt';
 
 // 조회만 하는 요청은 구글 응답 전달(echo)이 실패하면 다시 보내도 안전하다
-const READ_ONLY = new Set(['getBootstrap', 'checkLeave', 'getTasks', 'checkTaskAbsence']);
+const READ_ONLY = new Set(['getBootstrap', 'checkLeave', 'getTasks', 'checkTaskAbsence', 'checkMeal']);
 
 const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: HEADERS });
+
+/**
+ * 식권 (Code.gs 밖의 기능): 로그인한 직원 본인 이름으로 들어온 PAYCO 신청만 조회(checkMeal)·승인(approveMeal)한다.
+ * 토큰 검증은 getBootstrap을 그대로 써서 Code.gs와 같은 규칙(만료·비밀번호 변경 시 무효)을 따른다.
+ */
+const MEAL = { checkMeal: checkMyMeal, approveMeal: approveMyMeal };
+async function meal(env, fn, body) {
+  try {
+    if (!env || env.BACKEND !== 'd1' || !env.DB) throw new Error('지금은 사용할 수 없는 기능입니다.');
+    const token = (JSON.parse(body).args || [])[0];
+    const boot = JSON.parse(await handleD1(env.DB, JSON.stringify({ fn: 'getBootstrap', args: [token] })));
+    const me = boot.ok && boot.data && boot.data.state && boot.data.state.me;
+    if (!me) throw new Error('AUTH:로그인이 만료되었습니다. 다시 로그인하세요.');
+    return { ok: true, data: await MEAL[fn](env, me.name) };
+  } catch (e) {
+    console.log(`[api] ${fn} 오류: ${e && e.stack}`);
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+}
 
 async function forward(url, body) {
   const res = await fetch(url, {
@@ -57,6 +77,8 @@ export async function onRequest({ request, env }) {
   if (env && env.MAINTENANCE === 'readonly' && !READ_ONLY.has(fn)) {
     return json({ ok: false, error: '잠시 점검 중입니다. 1~2분 뒤 다시 시도해 주세요.' });
   }
+
+  if (Object.prototype.hasOwnProperty.call(MEAL, fn)) return json(await meal(env, fn, body));
 
   // DB 서버
   if (env && env.BACKEND === 'd1' && env.DB) {
