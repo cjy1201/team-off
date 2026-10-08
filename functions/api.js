@@ -6,7 +6,7 @@
 // 환경 변수(wrangler.toml [vars] 또는 Cloudflare 대시보드)로 동작을 바꾼다:
 //   BACKEND = 'gas' (기본) → Apps Script로 전달 / 'd1' → Cloudflare DB(D1)에서 직접 처리 (Code.gs 로직 그대로)
 //   MAINTENANCE = 'readonly' → 저장 요청만 잠시 막음 (DB 전환 순간에 사용)
-import { handleD1 } from '../lib/d1-backend.js';
+import { handleD1, logHistory } from '../lib/d1-backend.js';
 import { approveMyMeal, checkMyMeal } from '../lib/meal.js';
 
 const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzzzEiIUU3mQzt';
@@ -29,7 +29,14 @@ async function meal(env, fn, body) {
     const boot = JSON.parse(await handleD1(env.DB, JSON.stringify({ fn: 'getBootstrap', args: [token] })));
     const me = boot.ok && boot.data && boot.data.state && boot.data.state.me;
     if (!me) throw new Error('AUTH:로그인이 만료되었습니다. 다시 로그인하세요.');
-    return { ok: true, data: await MEAL[fn](env, me.name) };
+    const data = await MEAL[fn](env, me.name);
+    if (fn === 'approveMeal' && (data.approved.length || data.failed.length)) {
+      // 승인은 이미 끝났으므로 이력 기록이 실패해도 결과는 그대로 돌려준다
+      const summary = [...data.approved, ...data.failed.map((x) => `${x} (승인 안 됨)`)].join(', ');
+      await logHistory(env.DB, { actor: me.email, kind: 'meal', action: data.failed.length ? '승인 실패' : '승인', owner: me.email, summary })
+        .catch((e) => console.log(`[api] 식권 이력 기록 실패: ${e && e.stack}`));
+    }
+    return { ok: true, data };
   } catch (e) {
     console.log(`[api] ${fn} 오류: ${e && e.stack}`);
     return { ok: false, error: (e && e.message) || String(e) };
