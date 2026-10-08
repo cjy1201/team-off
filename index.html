@@ -202,6 +202,7 @@
   /* 새 소식 */
   .bell { position: relative; }
   .bell svg { width: 19px; height: 19px; }
+  .meal svg { width: 19px; height: 19px; } /* 크기를 안 주면 iOS 사파리에서 0으로 줄어 안 보인다 */
   .nbadge { position: absolute; top: 1px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
   .ndot { position: absolute; top: 6px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
   .badge.new { background: var(--danger); color: #fff; margin-left: 4px; }
@@ -1870,7 +1871,7 @@ function bellButton() {
 const MEAL_ON = MODE === 'api' && /\.pages\.dev$/.test(location.hostname);
 function mealButton() {
   if (!MEAL_ON) return '';
-  return `<button class="icon-btn ghost-btn" data-act="meal" title="식권 승인" aria-label="식권 승인">
+  return `<button class="icon-btn ghost-btn meal" data-act="meal" title="식권 승인" aria-label="식권 승인">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a3 3 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a3 3 0 0 0 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M14 5v2"/><path d="M14 11v2"/><path d="M14 17v2"/></svg></button>`;
 }
 /** 내 대기 신청을 먼저 조회해서 보여주고, 확인하면 승인 */
