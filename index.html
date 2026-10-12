@@ -18,7 +18,7 @@
     --text: #1d2330; --muted: #6b7280; --primary: #1f5eff; --primary-weak: #e8efff;
     --danger: #d92d20; --danger-weak: #fdecea; --warn: #b54708; --warn-weak: #fff4e5;
     --sun: #d92d20; --sat: #2563eb; --today: #1f5eff;
-    --t-annual: #2563eb; --t-am: #0d9488; --t-pm: #7c3aed; --t-sick: #ea580c; --t-edu: #db2777; --t-etc: #64748b; --t-qpm: #65a30d; --evt: #b45309; --evt-bg: #fff7ed;
+    --t-annual: #2563eb; --t-am: #0d9488; --t-pm: #7c3aed; --t-sick: #ea580c; --t-edu: #db2777; --t-etc: #64748b; --t-qpm: #5b7f1a; --evt: #b45309; --evt-bg: #fff7ed;
     --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
     --radius: 12px;
     color-scheme: light;
@@ -29,7 +29,7 @@
       --text: #e7e9ee; --muted: #9aa3b2; --primary: #6b93ff; --primary-weak: #1c2742;
       --danger: #ff6b5e; --danger-weak: #3a1b19; --warn: #f5a524; --warn-weak: #33260f;
       --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
-      --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --t-qpm: #a3e635; --evt: #fbbf24; --evt-bg: #2a2110;
+      --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --t-qpm: #6f9a2a; --evt: #fbbf24; --evt-bg: #2a2110;
       --shadow: none;
       color-scheme: dark; /* 입력칸·달력 선택창 같은 브라우저 기본 부품도 어둡게 */
     }
@@ -39,7 +39,7 @@
     --text: #e7e9ee; --muted: #9aa3b2; --primary: #6b93ff; --primary-weak: #1c2742;
     --danger: #ff6b5e; --danger-weak: #3a1b19; --warn: #f5a524; --warn-weak: #33260f;
     --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
-    --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --t-qpm: #a3e635; --evt: #fbbf24; --evt-bg: #2a2110;
+    --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --t-qpm: #6f9a2a; --evt: #fbbf24; --evt-bg: #2a2110;
     --shadow: none;
     color-scheme: dark;
   }
@@ -885,7 +885,7 @@ const Mock = (() => {
         const raw = String((days[e] && typeof days[e] === 'object' ? days[e].일반휴가 : days[e]) ?? '').trim();
         const map = { ...(u.annual || {}) }, k = { ...(map[year] || {}) }, before = k.일반휴가;
         if (raw === '') delete k.일반휴가;
-        else { const n = Number(raw); need(isFinite(n) && n >= 0 && n <= 60 && Math.round(n * 2) === n * 2, `${u.name}: 일반휴가 일수는 0~60, 0.5일 단위로 입력하세요.`); k.일반휴가 = n; }
+        else { const n = Number(raw); need(isFinite(n) && n >= 0 && n <= 60 && Math.round(n * 4) === n * 4, `${u.name}: 일반휴가 일수는 0~60, 0.25일 단위로 입력하세요.`); k.일반휴가 = n; }
         if (before !== k.일반휴가) { map[year] = k; u.annual = map; changes.push(`${u.name} 일반 ${before ?? '-'} → ${k.일반휴가 ?? '-'}`); }
       });
       if (changes.length) log(a, 'user', `${year}년 휴가 일수`, '', changes.join(', '));
@@ -895,7 +895,7 @@ const Mock = (() => {
       const a = admin(token); const u = db.users.find((x) => x.email === email); need(u, '팀원을 찾을 수 없습니다.');
       const list = (grants || []).map((g, i) => {
         need(GRANT_KINDS.includes(g.kind), `${i + 1}번째 줄: 종류를 고르세요.`);
-        need(g.days > 0 && g.days <= 30 && Math.round(g.days * 2) === g.days * 2, `${i + 1}번째 줄: 일수는 0.5~30, 0.5일 단위로 입력하세요.`);
+        need(g.days > 0 && g.days <= 30 && Math.round(g.days * 4) === g.days * 4, `${i + 1}번째 줄: 일수는 0.25~30, 0.25일 단위로 입력하세요.`);
         return { kind: g.kind, days: g.days, date: g.date || '', note: String(g.note || '').slice(0, 50) };
       }).sort((x, y) => (x.date || '9999').localeCompare(y.date || '9999'));
       const map = { ...(u.annual || {}) }, k = { ...(map[year] || {}) };
@@ -1787,7 +1787,7 @@ function openAnnualForm(year, draft) {
     <div class="content">
       <div class="filters" style="margin-bottom:8px">
         <select data-year>${[thisYear, thisYear + 1].map((y) => `<option ${String(y) === year ? 'selected' : ''}>${y}</option>`).join('')}</select>
-        <span class="muted small">년 부여 일수 (0.5일 단위, 비우면 없음)</span>
+        <span class="muted small">년 부여 일수 (0.25일 단위, 비우면 없음)</span>
       </div>
       <div class="infobox" style="margin:0 0 10px">남은 휴가 = 일반휴가 + 특별휴가 + 대체휴가 − 사용(연차·반차, 예정 포함). 본인과 PM만 볼 수 있고 참고용입니다.<br>
         <span class="muted small">특별휴가 · 대체휴가는 생길 때마다 [내역]에서 한 줄씩 추가하세요 (생긴 날 · 일수 · 사유). 합계는 자동으로 계산돼요.</span></div>
@@ -1798,7 +1798,7 @@ function openAnnualForm(year, draft) {
           const n = an.kinds.내역.length;
           return `<tr><td style="white-space:nowrap">${esc(u.name)} <span class="muted small">${esc(u.part || 'PM')}</span></td>
           <td class="num">${an.used}</td>
-          <td class="num"><input type="number" min="0" max="60" step="0.5" inputmode="decimal" data-email="${esc(u.email)}" value="${esc(u.email in draft ? draft[u.email] : cur(u))}" class="num-input"></td>
+          <td class="num"><input type="number" min="0" max="60" step="0.25" inputmode="decimal" data-email="${esc(u.email)}" value="${esc(u.email in draft ? draft[u.email] : cur(u))}" class="num-input"></td>
           <td class="num">${typeof an.kinds.특별휴가 === 'number' ? an.kinds.특별휴가 : '<span class="muted">-</span>'}</td>
           <td class="num">${typeof an.kinds.대체휴가 === 'number' ? an.kinds.대체휴가 : '<span class="muted">-</span>'}</td>
           <td><button class="btn sm" data-grants="${esc(u.email)}">내역${n ? ` ${n}` : ''}</button></td></tr>`;
@@ -1843,7 +1843,7 @@ function openGrantForm(year, email, draft) {
     box.innerHTML = rows.length ? rows.map((g, i) => `<div class="grant-row" data-i="${i}">
       <select data-f="kind">${GRANT_KINDS.map((k) => `<option ${g.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
       <input type="date" data-f="date" value="${esc(g.date || '')}" aria-label="생긴 날">
-      <input type="number" data-f="days" min="0.5" max="30" step="0.5" inputmode="decimal" value="${esc(String(g.days))}" class="num-input" aria-label="일수">
+      <input type="number" data-f="days" min="0.25" max="30" step="0.25" inputmode="decimal" value="${esc(String(g.days))}" class="num-input" aria-label="일수">
       <input data-f="note" maxlength="50" placeholder="사유 (예: 9/20 주말 근무)" value="${esc(g.note || '')}">
       <button class="btn sm danger" data-del="${i}" aria-label="삭제">✕</button></div>`).join('') : '<div class="card empty">내역이 없습니다. [+ 한 줄 추가]를 누르세요.</div>';
     const sum = (k) => rows.filter((g) => g.kind === k).reduce((s2, g) => s2 + (Number(g.days) || 0), 0);
