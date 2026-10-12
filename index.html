@@ -310,6 +310,7 @@ const SHORT = { // 달력 칸에 표시하는 짧은 이름
   '연차': '연차', '오전반차': '오전', '오후반차': '오후', '반반차': '반반', '병가': '병가', '연수/교육': '교육', '기타': '기타' };
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const PARTS = ['기획', 'QA', '개발', '퍼블', 'NP', '디자인'];
+const TASK_PARTS = [...PARTS, 'PM']; // 업무 일정의 파트 ('PM' 업무는 PM만 등록)
 const MAX_SUBS = 3;
 const ROLE_TEXT = { pm: 'PM', pl: 'PL', member: '파트원' };
 /** 'PM' / 'PL' / '파트원'(또는 빈칸) → pm / pl / member */
@@ -835,7 +836,7 @@ const Mock = (() => {
       const vis = ['all', 'part', 'private'].includes(i.visibility) ? i.visibility : 'all';
       need(vis !== 'private' || (ex ? ex.createdBy : u.email) === u.email, "'나만 보기'는 등록한 사람만 설정할 수 있습니다.");
       const part = pm ? i.part : ex ? ex.part : u.part;
-      need(PARTS.includes(part), pm ? '파트를 선택하세요.' : '파트가 지정되지 않은 계정입니다.');
+      need(TASK_PARTS.includes(part), pm ? '파트를 선택하세요.' : '파트가 지정되지 않은 계정입니다.');
       need((i.title || '').trim(), '제목을 입력하세요.');
       need(i.startDate && (i.endDate || i.startDate) >= i.startDate, '날짜를 확인하세요.');
       const row = { id: ex ? ex.id : 'T' + Date.now(), part, title: i.title.trim(), category: i.category, startDate: i.startDate, endDate: i.endDate || i.startDate,
@@ -1450,7 +1451,7 @@ function workTimeline(list, first) {
     html += `<div class="tl-day ${D.isOff(ds, parse(ds)) ? 'off' : ''} ${ds === today ? 'today' : ''}">${d}</div>`;
   }
   html += '</div>';
-  const parts = PARTS.filter((p) => inMonth.some((t) => t.part === p));
+  const parts = TASK_PARTS.filter((p) => inMonth.some((t) => t.part === p));
   parts.forEach((p) => {
     html += `<div class="tl-row"><div class="tl-label tl-part" style="grid-column: 1 / -1">${esc(p)} <span class="muted small">${inMonth.filter((t) => t.part === p).length}건</span></div></div>`;
     inMonth.filter((t) => t.part === p).sort((a, b) => a.startDate.localeCompare(b.startDate)).forEach((t) => {
@@ -1502,7 +1503,7 @@ function viewWork() {
 
   return `
     <div class="chips-row" style="margin-bottom:10px">
-      ${['', ...PARTS].map((p) => `<button class="${ui.workPart === p ? 'on' : ''}" data-act="wpart" data-v="${p}">${p || '전체 파트'}</button>`).join('')}
+      ${['', ...PARTS, ...(isAdmin() || (W.tasks || []).some((t) => t.part === 'PM') ? ['PM'] : [])].map((p) => `<button class="${ui.workPart === p ? 'on' : ''}" data-act="wpart" data-v="${p}">${p || '전체 파트'}</button>`).join('')}
     </div>
     ${summary}
     <div class="cal-toolbar">
@@ -1558,12 +1559,12 @@ function openTaskForm(id, date) {
   const d0 = date || todayStr();
   const mine = !ex || ex.createdBy === S.me.email; // '나만 보기'는 등록한 사람만 설정 가능
   const f = ex ? Object.assign({}, ex, { assignees: ex.assignees.slice() })
-    : { id: '', part: isAdmin() ? ui.workPart || myPart : myPart, title: '', category: '개발', startDate: d0, endDate: d0, time: '', assignees: [S.me.email], status: '예정', visibility: 'all', memo: '' };
+    : { id: '', part: isAdmin() ? ui.workPart || myPart || 'PM' : myPart, title: '', category: '개발', startDate: d0, endDate: d0, time: '', assignees: [S.me.email], status: '예정', visibility: 'all', memo: '' };
   const m = openModal(`
     <header><h3>${ex ? '업무 일정 수정' : '업무 일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       <div class="field"><label>파트 <span class="req">*</span></label>${isAdmin() && !ex
-        ? `<select name="part"><option value="">— 파트 선택 —</option>${PARTS.map((p) => `<option ${f.part === p ? 'selected' : ''}>${p}</option>`).join('')}</select>`
+        ? `<select name="part"><option value="">— 파트 선택 —</option>${TASK_PARTS.map((p) => `<option ${f.part === p ? 'selected' : ''} value="${p}">${p === 'PM' ? 'PM 업무' : p}</option>`).join('')}</select>`
         : `<input value="${esc(f.part)}" disabled>`}</div>
       <div class="field"><label>제목 <span class="req">*</span></label><input name="title" maxlength="60" value="${esc(f.title)}" placeholder="예: 10월 정기배포, 앱 3.2 회귀 테스트"></div>
       <div class="field"><label>분류 <span class="req">*</span></label>
