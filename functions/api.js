@@ -19,6 +19,7 @@ const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, 
 
 /**
  * 식권 (Code.gs 밖의 기능): 로그인한 직원 본인 이름으로 들어온 PAYCO 신청만 조회(checkMeal)·승인(approveMeal)한다.
+ * PM이 팀원 관리에서 '식권'을 켠 사람만 쓸 수 있다 (me.meal).
  * 토큰 검증은 getBootstrap을 그대로 써서 Code.gs와 같은 규칙(만료·비밀번호 변경 시 무효)을 따른다.
  */
 const MEAL = { checkMeal: checkMyMeal, approveMeal: approveMyMeal };
@@ -29,6 +30,7 @@ async function meal(env, fn, body) {
     const boot = JSON.parse(await handleD1(env.DB, JSON.stringify({ fn: 'getBootstrap', args: [token] })));
     const me = boot.ok && boot.data && boot.data.state && boot.data.state.me;
     if (!me) throw new Error('AUTH:로그인이 만료되었습니다. 다시 로그인하세요.');
+    if (!me.meal) throw new Error('식권 승인 권한이 없습니다. PM에게 요청하세요.'); // 팀원 관리의 '식권' 토글
     const data = await MEAL[fn](env, me.name);
     if (fn === 'approveMeal' && (data.approved.length || data.failed.length)) {
       // 승인은 이미 끝났으므로 이력 기록이 실패해도 결과는 그대로 돌려준다
