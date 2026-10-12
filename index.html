@@ -18,7 +18,7 @@
     --text: #1d2330; --muted: #6b7280; --primary: #1f5eff; --primary-weak: #e8efff;
     --danger: #d92d20; --danger-weak: #fdecea; --warn: #b54708; --warn-weak: #fff4e5;
     --sun: #d92d20; --sat: #2563eb; --today: #1f5eff;
-    --t-annual: #2563eb; --t-am: #0d9488; --t-pm: #7c3aed; --t-sick: #ea580c; --t-edu: #db2777; --t-etc: #64748b; --evt: #b45309; --evt-bg: #fff7ed;
+    --t-annual: #2563eb; --t-am: #0d9488; --t-pm: #7c3aed; --t-sick: #ea580c; --t-edu: #db2777; --t-etc: #64748b; --t-qpm: #65a30d; --evt: #b45309; --evt-bg: #fff7ed;
     --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
     --radius: 12px;
     color-scheme: light;
@@ -29,7 +29,7 @@
       --text: #e7e9ee; --muted: #9aa3b2; --primary: #6b93ff; --primary-weak: #1c2742;
       --danger: #ff6b5e; --danger-weak: #3a1b19; --warn: #f5a524; --warn-weak: #33260f;
       --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
-      --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --evt: #fbbf24; --evt-bg: #2a2110;
+      --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --t-qpm: #a3e635; --evt: #fbbf24; --evt-bg: #2a2110;
       --shadow: none;
       color-scheme: dark; /* 입력칸·달력 선택창 같은 브라우저 기본 부품도 어둡게 */
     }
@@ -39,7 +39,7 @@
     --text: #e7e9ee; --muted: #9aa3b2; --primary: #6b93ff; --primary-weak: #1c2742;
     --danger: #ff6b5e; --danger-weak: #3a1b19; --warn: #f5a524; --warn-weak: #33260f;
     --sun: #ff6b5e; --sat: #6b93ff; --today: #6b93ff;
-    --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --evt: #fbbf24; --evt-bg: #2a2110;
+    --t-annual: #5b8cff; --t-am: #2dd4bf; --t-pm: #a78bfa; --t-sick: #fb923c; --t-edu: #f472b6; --t-etc: #94a3b8; --t-qpm: #a3e635; --evt: #fbbf24; --evt-bg: #2a2110;
     --shadow: none;
     color-scheme: dark;
   }
@@ -130,7 +130,7 @@
   .chip .w { flex: none; }
   .more { font-size: 11px; color: var(--muted); margin-top: 2px; padding-left: 4px; }
   .t-연차 { background: var(--t-annual); } .t-오전반차 { background: var(--t-am); } .t-오후반차 { background: var(--t-pm); }
-  .t-병가 { background: var(--t-sick); } .t-연수\/교육 { background: var(--t-edu); } .t-기타 { background: var(--t-etc); }
+  .t-반반차 { background: var(--t-qpm); } .t-병가 { background: var(--t-sick); } .t-연수\/교육 { background: var(--t-edu); } .t-기타 { background: var(--t-etc); }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
   .legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -304,10 +304,10 @@
 /* =========================================================
    공통 상수 / 유틸
    ========================================================= */
-const TYPES = ['연차', '오전반차', '오후반차', '병가', '연수/교육', '기타'];
-const HALF = { '오전반차': true, '오후반차': true };
+const TYPES = ['연차', '오전반차', '오후반차', '반반차', '병가', '연수/교육', '기타'];
+const HALF = { '오전반차': 0.5, '오후반차': 0.5, '반반차': 0.25 }; // 하루짜리 + 사용일수 (반반차는 오후에만, 0.25일)
 const SHORT = { // 달력 칸에 표시하는 짧은 이름
-  '연차': '연차', '오전반차': '오전', '오후반차': '오후', '병가': '병가', '연수/교육': '교육', '기타': '기타' };
+  '연차': '연차', '오전반차': '오전', '오후반차': '오후', '반반차': '반반', '병가': '병가', '연수/교육': '교육', '기타': '기타' };
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const PARTS = ['기획', 'QA', '개발', '퍼블', 'NP', '디자인'];
 const MAX_SUBS = 3;
@@ -323,7 +323,7 @@ const todayStr = () => ymd(new Date());
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtShort = (s) => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]})`; };
 const fmtRange = (l) => l.startDate === l.endDate ? fmtShort(l.startDate) : `${fmtShort(l.startDate)} ~ ${fmtShort(l.endDate)}`;
-const slots = (type) => type === '오전반차' ? 1 : type === '오후반차' ? 2 : 3;
+const slots = (type) => type === '오전반차' ? 1 : type === '오후반차' || type === '반반차' ? 2 : 3;
 const overlaps = (a, b) => a.startDate <= b.endDate && b.startDate <= a.endDate && (slots(a.type) & slots(b.type)) !== 0;
 
 function eachDate(start, end, fn) {
@@ -650,7 +650,7 @@ const Mock = (() => {
     db.leaves.forEach((m) => {
       if (m.id === l.id || !overlaps(l, m)) return;
       const s = l.startDate > m.startDate ? l.startDate : m.startDate, e = l.endDate < m.endDate ? l.endDate : m.endDate;
-      const when = fmtRange({ startDate: s, endDate: e }) + (m.type === '오전반차' ? ' 오전' : m.type === '오후반차' ? ' 오후' : '');
+      const when = fmtRange({ startDate: s, endDate: e }) + (m.type === '오전반차' ? ' 오전' : m.type === '오후반차' || m.type === '반반차' ? ' 오후' : '');
       if (l.substitutes.includes(m.email)) out.push(`대직자 ${nameOf(m.email)}님이 ${when} 부재`);
       else if (m.substitutes.includes(l.email)) out.push(`${nameOf(m.email)}님이 ${nameOf(l.email)}님을 대직자로 지정했는데 ${when} 둘 다 부재`);
     });
@@ -810,7 +810,7 @@ const Mock = (() => {
         if (l.email !== e || l.startDate > task.endDate || task.startDate > l.endDate) return;
         if (!seeAll && l.email !== u.email && !(u.part && partOfU(l.email) === u.part)) return;
         const s = l.startDate > task.startDate ? l.startDate : task.startDate, en = l.endDate < task.endDate ? l.endDate : task.endDate;
-        out.push(`${nameOf(e)}님 ${fmtRange({ startDate: s, endDate: en })}${l.type === '오전반차' ? ' 오전' : l.type === '오후반차' ? ' 오후' : ''} 부재`);
+        out.push(`${nameOf(e)}님 ${fmtRange({ startDate: s, endDate: en })}${l.type === '오전반차' ? ' 오전' : l.type === '오후반차' || l.type === '반반차' ? ' 오후' : ''} 부재`);
       }));
       return out;
     },
@@ -1040,7 +1040,7 @@ const grantsHtml = (an) => (an.kinds.내역.length ? `<div class="small muted" s
 function workdays(l) {
   let n = 0;
   eachDate(l.startDate, l.endDate, (ds, d) => { if (!D.isOff(ds, d)) n++; });
-  return HALF[l.type] ? n * 0.5 : n;
+  return HALF[l.type] ? n * HALF[l.type] : n;
 }
 
 /** 해당 날짜의 중요 일정 (PM이 등록, 전 직원 공개) */
@@ -1772,7 +1772,7 @@ function viewAll() {
     ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${usagePart ? esc(usagePart) + ' 파트 ' : extOnly ? '휴가 ' : '팀원별 '}사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
       ${isAdmin() ? '<button class="btn sm" data-act="annualForm">휴가 일수 입력</button>' : ''}</div>
     <div class="card table-wrap"><table>
-      <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th>${showAnnual ? '<th class="num">부여 합계</th><th class="num">남은 휴가</th>' : ''}</tr></thead>
+      <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차·반반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th>${showAnnual ? '<th class="num">부여 합계</th><th class="num">남은 휴가</th>' : ''}</tr></thead>
       <tbody>${rows || `<tr><td colspan="9" class="muted">${extOnly ? '부여 일수가 입력된 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
 }
 
@@ -2166,7 +2166,7 @@ const GUIDE = [
     { r: 'all', x: '[오늘 근태 복사]를 누르면 아침 근태 보고 문구가 복사돼요. 날짜 상세의 [근태 복사]는 그 날짜 기준이에요.' },
   ] },
   { t: '휴가 등록', items: [
-    { x: '[+ 일정 등록]에서 유형(연차 · 오전/오후반차 · 병가 · 연수/교육 · 기타)과 날짜, 대직자(1~3명, 필수)를 정해요.' },
+    { x: '[+ 일정 등록]에서 유형(연차 · 오전/오후반차 · 반반차 · 병가 · 연수/교육 · 기타)과 날짜, 대직자(1~3명, 필수)를 정해요. 반반차는 오후에만 쓰고 0.25일로 계산돼요.' },
     { x: '대직자가 같은 날 부재이면 ⚠ 경고가 떠요. 경고가 있어도 등록은 돼요.' },
     { x: '오른쪽 위 이름 메뉴에서 기본 대직자를 정해 두면 등록할 때 자동으로 채워져요.' },
     { x: '수정 · 삭제는 [내 일정] 탭에서 본인 일정만 할 수 있어요. 이미 지난 일정은 PM만 고칠 수 있으니 PM에게 요청하세요.' },
@@ -2210,6 +2210,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-12', items: [
+    { x: '반반차가 생겼어요. 오후에만 쓰고, 연차에서 0.25일이 빠져요.' },
     { r: 'meal', x: '상단 식권 아이콘: PAYCO에서 신청한 내 식권을 여기서 바로 승인할 수 있어요. 본인 이름으로 들어온 신청만 승인돼요.' },
     { r: 'pm', x: '[팀원 관리]의 식권 토글로 식권 버튼을 쓸 사람을 정해요. 켠 사람에게만 상단 식권 아이콘이 보여요.' },
   ] },
@@ -2513,7 +2514,7 @@ function parseBulk(text) {
  * 휴가 일괄 등록용 붙여넣기 해석 (PM). 그룹웨어 목록을 그대로 복사해도 읽히게:
  *  - 제목 줄이 있으면 칸 이름으로 찾는다 (휴가자/연수자·직원·이름 / 유형·종류 / 시작일 / 종료일 / 대직자 / 메모·사유 / 등록일)
  *  - 제목 줄이 없으면: 직원 이름이 있는 첫 칸 = 직원, 날짜 칸 순서대로 시작일·종료일(·등록일), 유형 단어가 있는 칸 = 유형, 그 뒤 다른 직원 이름 = 대직자
- *  - 유형: 휴가·연차 → 연차, 휴가(오전)·오전반차 → 오전반차, 휴가(오후) → 오후반차, 병가, 연수·교육 → 연수/교육, 기타·경조·공가 → 기타
+ *  - 유형: 휴가·연차 → 연차, 휴가(오전)·오전반차 → 오전반차, 휴가(오후) → 오후반차, 반반차, 병가, 연수·교육 → 연수/교육, 기타·경조·공가 → 기타
  *  - 날짜: 2026-03-02 · 2026.3.2 · 3/2 · 3.2 (연도 없으면 올해)
  */
 function leaveTypeOf(v) {
@@ -2521,6 +2522,7 @@ function leaveTypeOf(v) {
   if (!s) return '';
   if (/병가/.test(s)) return '병가';
   if (/연수|교육/.test(s)) return '연수/교육';
+  if (/반반차/.test(s)) return '반반차';
   if (/오전/.test(s)) return '오전반차';
   if (/오후/.test(s)) return '오후반차';
   if (/반차/.test(s)) return '?반차';
@@ -2593,8 +2595,7 @@ function parseLeaveBulk(text) {
     else if (r.subs.includes(r.email)) r.error = '본인을 대직자로 지정할 수 없음';
     else if (!r.subs.length && r.endDate >= todayStr()) r.error = '오늘 이후 일정은 대직자 필요';
     else {
-      const clash = (x) => x.email === r.email && x.startDate <= r.endDate && r.startDate <= x.endDate
-        && !((x.type === '오전반차' && r.type === '오후반차') || (x.type === '오후반차' && r.type === '오전반차'));
+      const clash = (x) => x.email === r.email && overlaps(x, r);
       if (S.leaves.some(clash)) r.error = '이미 등록된 일정과 겹침';
       else if (out.some((o) => !o.error && clash(o))) r.error = '붙여넣은 목록 안에서 겹침';
     }
@@ -2609,7 +2610,7 @@ function openLeaveBulkForm() {
     <div class="content">
       <div class="infobox" style="margin-top:0;color:var(--text)">그룹웨어나 엑셀의 휴가 목록을 <b>제목 줄까지 함께</b> 복사해서 붙여넣으세요.<br>
         <span class="muted small">필요한 칸: 휴가자(이름 또는 이메일) · 유형 · 시작일 · 종료일 · 대직자 · 등록일(선택). 다른 칸은 무시합니다.<br>
-        유형: 휴가·연차 → 연차, 휴가(오전)/(오후) → 오전/오후반차, 병가, 연수·교육, 기타 · 지난 일정은 대직자를 비워도 됩니다.</span></div>
+        유형: 휴가·연차 → 연차, 휴가(오전)/(오후) → 오전/오후반차, 반반차, 병가, 연수·교육, 기타 · 지난 일정은 대직자를 비워도 됩니다.</span></div>
       <div class="field"><textarea name="bulk" rows="7" spellcheck="false" placeholder="휴가자&#9;유형&#9;시작일&#9;종료일&#9;등록일&#9;대직자&#10;임동빈&#9;휴가(오후)&#9;2026-10-02&#9;2026-10-02&#9;2026-10-02&#9;김선희"></textarea></div>
       <div data-bulkpreview></div>
     </div>
