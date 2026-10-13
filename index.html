@@ -204,8 +204,8 @@
   .ghost-btn.spin { animation: spin .8s linear infinite; }
   /* 새 소식 */
   .bell { position: relative; }
-  .bell svg { width: 19px; height: 19px; }
-  .meal svg { width: 19px; height: 19px; } /* 크기를 안 주면 iOS 사파리에서 0으로 줄어 안 보인다 */
+  /* 아이콘 버튼 속 그림: iOS 사파리는 버튼 안의 svg를 block으로 두지 않으면 그리지 않는다 (크기만 줘서는 안 보임) */
+  .icon-btn svg { display: block; flex: none; width: 19px; height: 19px; }
   .nbadge { position: absolute; top: 1px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
   .ndot { position: absolute; top: 6px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
   .badge.new { background: var(--danger); color: #fff; margin-left: 4px; }
