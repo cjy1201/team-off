@@ -54,6 +54,8 @@
   }
   button, input, select, textarea { font: inherit; color: inherit; }
   .meal-toggle { font-size: 13px; margin-right: 4px; white-space: nowrap; }
+  th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  th.sortable:hover, th.sortable.on { color: var(--primary); }
   .plink { color: var(--primary); cursor: pointer; font-weight: 600; }
   .num-input { padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 64px; text-align: right; }
   .grant-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
@@ -963,6 +965,7 @@ const ui = {
   workPart: '',   // 업무 일정 파트 필터 ('' = 전체)
   workMine: false, // 내 담당·내가 쓴 것만
   workView: 'cal', // 'cal' 캘린더 / 'timeline' 타임라인
+  usageSort: { key: 'name', dir: 'asc' }, // 전체 일정 · 사용 현황 표 정렬
 };
 let D = {}; // 파생 데이터
 
@@ -1742,20 +1745,31 @@ function viewAll() {
       <div class="section-title">지난 일정 <span class="muted small">${past.length}건 · 최근 순${isAdmin() ? ' · PM은 지난 일정도 수정할 수 있어요' : ''}</span></div><div class="list">${listHtml(past)}</div>`;
   }
 
-  const rows = usagePeople.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => {
+  // 사용 현황: 사람마다 숫자를 먼저 계산 → 제목 칸을 누르면 그 기준으로 정렬 (다시 누르면 반대로)
+  const usage = usagePeople.map((u) => {
     const ls = S.leaves.filter((l) => l.email === u.email && l.startDate.startsWith(year));
     const sum = (pred) => ls.filter(pred).reduce((s, l) => s + workdays(l), 0);
-    return `<tr><td><span class="plink" data-act="pickMember" data-v="${esc(u.email)}" title="${esc(u.name)}님 일정 전체 보기">${esc(u.name)}</span>${isAdmin() && u.part ? ` <span class="muted small">${esc(u.part)}</span>` : ''}</td>
-      <td class="num">${sum((l) => l.type === '연차')}</td>
-      <td class="num">${sum((l) => HALF[l.type])}</td>
-      <td class="num"><b>${sum((l) => l.type === '연차' || HALF[l.type])}</b></td>
-      <td class="num">${sum((l) => l.type === '병가')}</td>
-      <td class="num">${sum((l) => l.type === '연수/교육')}</td>
-      <td class="num">${sum((l) => l.type === '기타')}</td>${showAnnual ? (() => {
-        const an = annualOf(u.email, u.annual, year);
-        return `<td class="num">${an.granted === null ? '<span class="muted">-</span>' : `<span title="${esc(annualBreak(an) + (an.kinds.내역.length ? '\n' + an.kinds.내역.map(grantText).join('\n') : ''))}">${an.granted}</span>`}</td><td class="num">${an.left === null ? '<span class="muted">-</span>' : an.left < 0 ? `<b style="color:var(--danger)">${an.left}</b>` : `<b>${an.left}</b>`}</td>`;
-      })() : ''}</tr>`;
-  }).join('');
+    const an = annualOf(u.email, u.annual, year);
+    return { u, an, name: u.name, annual: sum((l) => l.type === '연차'), half: sum((l) => HALF[l.type]), total: sum((l) => l.type === '연차' || HALF[l.type]),
+      sick: sum((l) => l.type === '병가'), edu: sum((l) => l.type === '연수/교육'), etc: sum((l) => l.type === '기타'), granted: an.granted, left: an.left };
+  });
+  const us = ui.usageSort;
+  usage.sort((a, b) => {
+    if (us.key === 'name') return (us.dir === 'asc' ? 1 : -1) * a.name.localeCompare(b.name);
+    const x = a[us.key], y = b[us.key];
+    if (x === null || y === null) return x === y ? a.name.localeCompare(b.name) : x === null ? 1 : -1; // 입력 안 한 사람(-)은 항상 아래
+    return (us.dir === 'asc' ? x - y : y - x) || a.name.localeCompare(b.name);
+  });
+  const rows = usage.map(({ u, an, annual, half, total, sick, edu, etc }) => `<tr><td><span class="plink" data-act="pickMember" data-v="${esc(u.email)}" title="${esc(u.name)}님 일정 전체 보기">${esc(u.name)}</span>${isAdmin() && u.part ? ` <span class="muted small">${esc(u.part)}</span>` : ''}</td>
+      <td class="num">${annual}</td>
+      <td class="num">${half}</td>
+      <td class="num"><b>${total}</b></td>
+      <td class="num">${sick}</td>
+      <td class="num">${edu}</td>
+      <td class="num">${etc}</td>${showAnnual
+        ? `<td class="num">${an.granted === null ? '<span class="muted">-</span>' : `<span title="${esc(annualBreak(an) + (an.kinds.내역.length ? '\n' + an.kinds.내역.map(grantText).join('\n') : ''))}">${an.granted}</span>`}</td><td class="num">${an.left === null ? '<span class="muted">-</span>' : an.left < 0 ? `<b style="color:var(--danger)">${an.left}</b>` : `<b>${an.left}</b>`}</td>`
+        : ''}</tr>`).join('');
+  const th = (key, label, num = true) => `<th class="${num ? 'num ' : ''}sortable${us.key === key ? ' on' : ''}" data-act="usageSort" data-v="${key}" title="눌러서 정렬">${label}${us.key === key ? (us.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`;
 
   return `
     <div class="filters">
@@ -1773,7 +1787,7 @@ function viewAll() {
     ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${usagePart ? esc(usagePart) + ' 파트 ' : extOnly ? '휴가 ' : '팀원별 '}사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
       ${isAdmin() ? '<button class="btn sm" data-act="annualForm">휴가 일수 입력</button>' : ''}</div>
     <div class="card table-wrap"><table>
-      <thead><tr><th>이름</th><th class="num">연차</th><th class="num">반차·반반차</th><th class="num">연차 합계</th><th class="num">병가</th><th class="num">연수/교육</th><th class="num">기타</th>${showAnnual ? '<th class="num">부여 합계</th><th class="num">남은 휴가</th>' : ''}</tr></thead>
+      <thead><tr>${th('name', '이름', false)}${th('annual', '연차')}${th('half', '반차·반반차')}${th('total', '연차 합계')}${th('sick', '병가')}${th('edu', '연수/교육')}${th('etc', '기타')}${showAnnual ? th('granted', '부여 합계') + th('left', '남은 휴가') : ''}</tr></thead>
       <tbody>${rows || `<tr><td colspan="9" class="muted">${extOnly ? '부여 일수가 입력된 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
 }
 
@@ -2864,6 +2878,11 @@ document.addEventListener('click', (e) => {
     case 'delHoliday': confirmBox('공휴일 삭제', `<p>${fmtShort(v)} ${esc(D.holidays[v] || '')}을(를) 삭제할까요?</p>`, '삭제', true).then((ok) => ok && run(api('deleteHoliday', v), '삭제했습니다.')); break;
     case 'holYear': ui.holYear += Number(v); render(); break;
     case 'clearMonth': ui.allFilter.month = ''; render(); break;
+    case 'usageSort': { // 같은 칸을 다시 누르면 반대로. 이름은 가나다순부터, 숫자는 많은 순부터
+      const us = ui.usageSort;
+      ui.usageSort = us.key === v ? { key: v, dir: us.dir === 'asc' ? 'desc' : 'asc' } : { key: v, dir: v === 'name' ? 'asc' : 'desc' };
+      render(); break;
+    }
     case 'pickMember': ui.allFilter = { member: v, month: '', warnOnly: false }; render(); window.scrollTo(0, 0); break;
     case 'account': openAccount(); break;
     case 'refresh': refreshData(true); break;
