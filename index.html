@@ -1564,7 +1564,7 @@ function openTaskForm(id, date) {
     <header><h3>${ex ? '업무 일정 수정' : '업무 일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       <div class="field"><label>파트 <span class="req">*</span></label>${isAdmin() && !ex
-        ? `<select name="part"><option value="">— 파트 선택 —</option>${TASK_PARTS.map((p) => `<option ${f.part === p ? 'selected' : ''} value="${p}">${p === 'PM' ? 'PM 업무' : p}</option>`).join('')}</select>`
+        ? `<select name="part"><option value="">— 파트 선택 —</option>${TASK_PARTS.map((p) => `<option ${f.part === p ? 'selected' : ''}>${p}</option>`).join('')}</select>`
         : `<input value="${esc(f.part)}" disabled>`}</div>
       <div class="field"><label>제목 <span class="req">*</span></label><input name="title" maxlength="60" value="${esc(f.title)}" placeholder="예: 10월 정기배포, 앱 3.2 회귀 테스트"></div>
       <div class="field"><label>분류 <span class="req">*</span></label>
