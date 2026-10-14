@@ -53,7 +53,7 @@
     font-size: 14px; line-height: 1.45; -webkit-text-size-adjust: 100%;
   }
   button, input, select, textarea { font: inherit; color: inherit; }
-  .meal-toggle { font-size: 13px; margin-right: 4px; white-space: nowrap; }
+  .ds-toggle { font-size: 13px; margin-right: 4px; white-space: nowrap; }
   th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   th.sortable:hover, th.sortable.on { color: var(--primary); }
   .plink { color: var(--primary); cursor: pointer; font-weight: 600; }
@@ -667,8 +667,8 @@ const Mock = (() => {
     const visible = (l) => pm || u.role === 'pl' || u.viewAll || mine(l) || leader(l.email);
     const brief = (l) => u.role === 'member' && !u.viewAll && !mine(l);
     return {
-      me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {}, meal: !!u.meal },
-      users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {}, meal: !!x.meal }
+      me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {}, ds: !!u.ds },
+      users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {}, ds: !!x.ds }
         : u.role === 'member' && u.viewAll && x.annual && Object.keys(x.annual).length
           ? { email: x.email, name: x.name, part: x.part, annual: Object.fromEntries(Object.entries(x.annual).map(([y, k]) => [y, typeof k === 'object'
             ? (({ 내역, ...rest }) => ({ ...rest, ...Object.fromEntries(GRANT_KINDS.filter((g) => (내역 || []).some((x2) => x2.kind === g)).map((g) => [g, 내역.filter((x2) => x2.kind === g).reduce((s2, x2) => s2 + x2.days, 0)])) }))(k) : k])) }
@@ -774,9 +774,9 @@ const Mock = (() => {
       const defaultSubs = checkDefs(i.defaultSubs, email);
       const viewAll = i.role === 'member' && !!i.viewAll;
       const desc = (x) => `${x.name} · ${roleLabel(x)}${x.part ? ' · ' + x.part : ''}`;
-      const meal = i.meal === undefined ? !!(ex && ex.meal) : !!i.meal;
-      if (ex) { const before = desc(ex); Object.assign(ex, { name: i.name.trim(), role: i.role, part, defaultSubs, viewAll, meal }); if (before !== desc(ex)) log(a, 'user', '정보 수정', email, `${before} → ${desc(ex)}`); return result(a, { email }); }
-      const t = temp(); db.users.push({ email, name: i.name.trim(), role: i.role, part, defaultSubs, viewAll, meal, password: t, mustChange: true });
+      const ds = i.ds === undefined ? !!(ex && ex.ds) : !!i.ds;
+      if (ex) { const before = desc(ex); Object.assign(ex, { name: i.name.trim(), role: i.role, part, defaultSubs, viewAll, ds }); if (before !== desc(ex)) log(a, 'user', '정보 수정', email, `${before} → ${desc(ex)}`); return result(a, { email }); }
+      const t = temp(); db.users.push({ email, name: i.name.trim(), role: i.role, part, defaultSubs, viewAll, ds, password: t, mustChange: true });
       log(a, 'user', '추가', email, desc({ name: i.name.trim(), role: i.role, part }));
       return result(a, { tempPassword: t, email, appUrl: PREVIEW_URL });
     },
@@ -908,9 +908,9 @@ const Mock = (() => {
       log(a, 'user', `${year}년 휴가 부여 내역`, email, list.map(grantText).join(', ') || '-');
       return result(a, { changed: 1 });
     },
-    setMealAccess(token, email, on) {
+    setDsStaff(token, email, on) {
       const a = admin(token); const u = db.users.find((x) => x.email === email); need(u, '팀원을 찾을 수 없습니다.');
-      if (!!u.meal !== !!on) { u.meal = !!on; log(a, 'user', on ? '식권 권한 켬' : '식권 권한 끔', email, u.name); }
+      if (!!u.ds !== !!on) { u.ds = !!on; log(a, 'user', on ? 'DS직원 지정' : 'DS직원 해제', email, u.name); }
       return result(a);
     },
     bulkAddLeaves(token, rows) {
@@ -1893,7 +1893,7 @@ function bellButton() {
 /** 식권(PAYCO) 본인 신청 승인 — Cloudflare 서버(/api, functions/api.js)에서만 동작 */
 const MEAL_ON = MODE === 'api' && /\.pages\.dev$/.test(location.hostname);
 function mealButton() {
-  if (!MEAL_ON || !S.me.meal) return ''; // PM이 팀원 관리에서 '식권'을 켠 사람만
+  if (!MEAL_ON || !S.me.ds) return ''; // DS직원만 (PM이 팀원 관리에서 체크)
   return `<button class="icon-btn ghost-btn meal" data-act="meal" title="식권 승인" aria-label="식권 승인">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a3 3 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a3 3 0 0 0 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M14 5v2"/><path d="M14 11v2"/><path d="M14 17v2"/></svg></button>`;
 }
@@ -2016,7 +2016,7 @@ function viewMembers() {
       <div class="card item"><div class="body">
         <div class="title">${esc(u.name)} <span class="badge ${u.role !== 'member' ? 'admin' : ''}">${esc(roleLabel(u))}</span>${u.email === S.me.email ? '<span class="muted small">(나)</span>' : ''}</div>
         <div class="meta">${esc(u.email)}${u.defaultSubs && u.defaultSubs.length ? ` · 기본 대직자 ${u.defaultSubs.map((e) => esc(nameOf(e))).join(', ')}` : ''}</div></div>
-        <div class="actions"><label class="toggle meal-toggle" title="상단 식권 승인 버튼 사용"><input type="checkbox" data-act="mealToggle" data-v="${esc(u.email)}" ${u.meal ? 'checked' : ''}> 식권</label>
+        <div class="actions"><label class="toggle ds-toggle" title="DS직원 (상단 식권 승인 버튼 사용)"><input type="checkbox" data-act="dsToggle" data-v="${esc(u.email)}" ${u.ds ? 'checked' : ''}> DS직원</label>
         <button class="btn sm" data-act="editUser" data-v="${esc(u.email)}">수정</button>
         ${u.email !== S.me.email ? `<button class="btn sm" data-act="resetPw" data-v="${esc(u.email)}">비밀번호 초기화</button>
           <button class="btn sm danger" data-act="delUser" data-v="${esc(u.email)}">삭제</button>` : ''}</div>
@@ -2027,7 +2027,7 @@ function viewMembers() {
       <button class="btn primary" data-act="newUser">+ 팀원 추가</button></span></div>
     <div class="infobox" style="margin:0 0 4px">팀원을 추가하면 <b>임시 비밀번호</b>가 발급됩니다. 사이트 주소·이메일·임시 비밀번호를 전달하면 첫 로그인 때 본인 비밀번호로 바꾸게 됩니다.<br>
       <b>PM</b> 전체 일정·관리 메뉴 &nbsp;·&nbsp; <b>PL</b> 전체 직원 일정 조회 &nbsp;·&nbsp; <b>파트원</b> 같은 파트 일정 조회 &nbsp;(PL·파트원은 본인 일정만 수정)<br>
-      <span class="muted small"><b>식권</b> 토글을 켠 사람에게만 상단에 식권(PAYCO) 승인 버튼이 보여요. 현재 ${S.users.filter((u) => u.meal).length}명.</span></div>
+      <span class="muted small"><b>DS직원</b>을 체크한 사람에게 상단 식권(PAYCO) 승인 버튼이 보여요. 현재 DS직원 ${S.users.filter((u) => u.ds).length}명.</span></div>
     ${backupBox()}
     ${groups.map(([title, list]) => `<div class="section-title">${esc(title)} <span class="muted small">${list.length}명</span></div><div class="list">${list.map(row).join('')}</div>`).join('')}`;
 }
@@ -2210,11 +2210,11 @@ const GUIDE = [
     { x: '[팀원 관리]에서 직원을 추가하면 임시 비밀번호가 담긴 안내 메시지를 복사할 수 있어요. 여러 명은 [일괄 등록]으로.' },
     { x: '[전체 일정] 탭 아래 사용 현황의 [휴가 일수 입력]에서 직원별 일반휴가 · 특별휴가 · 대체휴가 부여 일수를 넣으면, 본인과 PM에게 남은 휴가(합계 − 사용)가 보여요.' },
     { x: '[전체 일정] → [휴가 일괄 등록]에 그룹웨어나 엑셀의 휴가 목록을 제목 줄까지 복사해 붙여넣으면, 미리보기로 확인한 뒤 한 번에 등록할 수 있어요. 지난 일정은 대직자를 비워도 돼요.' },
-    { x: '[팀원 관리]의 식권 토글을 켠 사람에게만 상단 식권 버튼이 보여요.' },
+    { x: '[팀원 관리]에서 DS직원을 체크하면 그 사람에게 상단 식권 버튼이 보여요.' },
     { x: '[변경 이력]에서 최근 90일 동안 누가 무엇을 바꿨는지(로그인 포함) 볼 수 있어요.' },
     { x: '데이터는 1시간마다 스프레드시트에 자동 백업돼요. 마지막 백업 시각은 팀원 관리 위쪽에 보여요.' },
   ] },
-  { r: 'meal', t: '식권 (상단 식권 아이콘)', items: [
+  { r: 'ds', t: '식권 (상단 식권 아이콘, DS직원)', items: [
     { x: 'PAYCO에서 식권을 신청한 뒤 상단 식권 아이콘을 누르면, 내 이름으로 들어온 대기 신청이 보이고 확인하면 승인돼요.' },
     { x: '다른 사람의 신청은 건드리지 않아요. 같은 이름이 다른 사번으로 있으면 자동 승인하지 않으니 승인권자에게 요청하세요.' },
   ] },
@@ -2227,8 +2227,8 @@ const GUIDE = [
 const UPDATES = [
   { d: '2026-10-12', items: [
     { x: '반반차가 생겼어요. 오후에만 쓰고, 연차에서 0.25일이 빠져요.' },
-    { r: 'meal', x: '상단 식권 아이콘: PAYCO에서 신청한 내 식권을 여기서 바로 승인할 수 있어요. 본인 이름으로 들어온 신청만 승인돼요.' },
-    { r: 'pm', x: '[팀원 관리]의 식권 토글로 식권 버튼을 쓸 사람을 정해요. 켠 사람에게만 상단 식권 아이콘이 보여요.' },
+    { r: 'ds', x: '상단 식권 아이콘: PAYCO에서 신청한 내 식권을 여기서 바로 승인할 수 있어요. 본인 이름으로 들어온 신청만 승인돼요.' },
+    { r: 'pm', x: '[팀원 관리]에서 DS직원을 체크해요. DS직원에게만 상단 식권 아이콘이 보여요.' },
   ] },
   { d: '2026-10-06', items: [
     { r: 'annual', x: '캘린더 맨 위 [내 남은 휴가] 카드와 휴가 등록 화면에서 남은 휴가를 바로 볼 수 있어요. 남은 휴가를 넘기면 저장 전에 알려줘요.' },
@@ -2259,8 +2259,8 @@ const UPDATES = [
   ] },
 ];
 
-// r: 없으면 전원 / pm / all(전체 조회) / team(다른 사람 일정을 봄) / meal(식권 권한) / annual(휴가 부여 일수가 입력된 사람) / viewer('전체 일정 조회' 권한 파트원)
-const guideFor = (r) => !r || (r === 'pm' ? isAdmin() : r === 'all' ? canSeeAll() : r === 'team' ? canSeeTeam() : r === 'meal' ? !!S.me.meal
+// r: 없으면 전원 / pm / all(전체 조회) / team(다른 사람 일정을 봄) / ds(DS직원) / annual(휴가 부여 일수가 입력된 사람) / viewer('전체 일정 조회' 권한 파트원)
+const guideFor = (r) => !r || (r === 'pm' ? isAdmin() : r === 'all' ? canSeeAll() : r === 'team' ? canSeeTeam() : r === 'ds' ? !!S.me.ds
   : r === 'annual' ? annualOf(S.me.email, S.me.annual, todayStr().slice(0, 4)).granted !== null : r === 'viewer' ? !isAdmin() && !isPL() && !!S.me.viewAll : false);
 /* 안 본 업데이트가 있으면 종 아이콘에 작은 점 (이 기기 기준, 나에게 해당하는 항목이 있는 업데이트만) */
 const GUIDE_SEEN_KEY = 'team-off-guide-seen';
@@ -2483,8 +2483,8 @@ function openUserForm(email) {
         <div class="muted small" style="margin-top:4px">PM은 파트를 비워둘 수 있습니다.</div></div>
       <div class="field" data-viewallwrap><label class="toggle" style="color:var(--text)"><input type="checkbox" name="viewAll" ${ex && ex.viewAll ? 'checked' : ''}>
         <span><b>전체 일정 조회</b> <span class="muted small">— 파트원 중 근태 보고 담당 등. 전체 일정을 볼 수만 있고 수정은 본인 일정만 가능. 휴가 사용 현황은 볼 수 없음</span></span></label></div>
-      <div class="field"><label class="toggle" style="color:var(--text)"><input type="checkbox" name="meal" ${ex && ex.meal ? 'checked' : ''}>
-        <span><b>식권 승인 버튼</b> <span class="muted small">— 상단에 식권(PAYCO) 버튼이 보이고, 본인 이름으로 들어온 식권 신청을 승인할 수 있음</span></span></label></div>
+      <div class="field"><label class="toggle" style="color:var(--text)"><input type="checkbox" name="ds" ${ex && ex.ds ? 'checked' : ''}>
+        <span><b>DS직원</b> <span class="muted small">— 상단에 식권(PAYCO) 버튼이 보이고, 본인 이름으로 들어온 식권 신청을 승인할 수 있음</span></span></label></div>
       <div class="field"><label>기본 대직자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_SUBS}명</span></label><div data-defsubs></div></div>
     </div>
     <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>저장</button></footer>`);
@@ -2500,7 +2500,7 @@ function openUserForm(email) {
     name: m.querySelector('[name=name]').value,
     role: m.querySelector('[name=role]').value,
     viewAll: m.querySelector('[name=viewAll]').checked,
-    meal: m.querySelector('[name=meal]').checked,
+    ds: m.querySelector('[name=ds]').checked,
     part: m.querySelector('[name=part]').value,
     isNew: !ex,
   }), ex ? '저장했습니다.' : '', (res) => { if (res.tempPassword) showTempPassword(res, '팀원을 추가했습니다', true); });
@@ -2908,9 +2908,9 @@ document.addEventListener('change', (e) => {
       break;
     }
     case 'filter': ui.allFilter[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; render(); break;
-    case 'mealToggle': {
+    case 'dsToggle': {
       const u = S.users.find((x) => x.email === t.dataset.v);
-      run(api('setMealAccess', t.dataset.v, t.checked), `${u ? u.name + '님 ' : ''}식권 버튼을 ${t.checked ? '켰' : '껐'}습니다.`);
+      run(api('setDsStaff', t.dataset.v, t.checked), `${u ? u.name + '님을 ' : ''}DS직원${t.checked ? '으로 지정' : '에서 해제'}했습니다.`);
       break;
     }
     case 'hfilter': HX[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; HX.limit = 200; render(); break;
