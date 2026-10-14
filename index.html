@@ -57,6 +57,9 @@
   th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   th.sortable:hover, th.sortable.on { color: var(--primary); }
   .plink { color: var(--primary); cursor: pointer; font-weight: 600; }
+  .quick-dates { float: right; display: inline-flex; gap: 2px; margin-top: -3px; }
+  .quick-dates .btn { padding: 2px 8px; font-size: 12px; }
+  .ptr { position: fixed; left: 0; right: 0; top: 0; z-index: 60; text-align: center; font-size: 13px; color: var(--muted); padding: 10px; opacity: 0; transform: translateY(-40px); pointer-events: none; transition: opacity .15s; }
   .num-input { padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 64px; text-align: right; }
   .grant-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
   .grant-row select, .grant-row input:not(.num-input) { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
@@ -70,7 +73,8 @@
   header.top { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
   .top-inner { max-width: 1200px; margin: 0 auto; padding: 12px 16px 0; }
   .brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .brand h1 { font-size: 17px; margin: 0; letter-spacing: -.2px; }
+  .brand h1 { font-size: 17px; margin: 0; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .t-short { display: none; }
   .whoami { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
   .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
   .badge.admin { background: var(--primary-weak); color: var(--primary); }
@@ -125,7 +129,9 @@
   .day.sun .dnum, .day.hol .dnum { color: var(--sun); }
   .day.sat .dnum { color: var(--sat); }
   .day.today .dnum { background: var(--today); color: #fff; }
-  .day.today { box-shadow: inset 0 0 0 2px var(--today); } /* 오늘 칸 테두리 (안쪽 그림자라 칸 크기는 그대로) */
+  .day.today { box-shadow: inset 0 0 0 2px var(--today); }
+  .day.flash { animation: dayflash 2s ease-out; }
+  @keyframes dayflash { 0%, 30% { background: var(--primary-weak); } 100% { background: transparent; } } /* 오늘 칸 테두리 (안쪽 그림자라 칸 크기는 그대로) */
   .hname { font-size: 10.5px; color: var(--sun); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chip { display: flex; align-items: center; gap: 3px; font-size: 11.5px; padding: 1px 5px; border-radius: 4px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
   .chip .nm { overflow: hidden; text-overflow: ellipsis; }
@@ -194,6 +200,12 @@
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; letter-spacing: 1px; }
   .chip.evt { background: var(--evt-bg); color: var(--evt); border: 1px solid var(--evt); font-weight: 600; }
   .evt-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .evt-compact { margin-bottom: 12px; overflow: hidden; }
+  .evt-row { display: flex; gap: 10px; align-items: baseline; padding: 9px 14px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--evt); cursor: pointer; min-width: 0; }
+  .evt-row:last-child { border-bottom: 0; }
+  .evt-row .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; flex: none; }
+  .evt-row .what { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .evt-row.more { color: var(--muted); font-size: 13px; border-left-color: transparent; }
   .evt-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-left: 3px solid var(--evt); }
   .evt-item .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; min-width: 92px; }
   .evt-item .what { flex: 1; min-width: 0; }
@@ -277,6 +289,8 @@
     .top-inner { padding: 10px 12px 0; }
     main { padding: 12px; }
     .brand h1 { font-size: 15px; }
+    .t-long, .whoami .role-badge { display: none; } /* 휴대폰: 제목 짧게, 이름 옆 권한 배지 숨김 → 한 줄 */
+    .t-short { display: inline; }
     .stats { gap: 6px; }
     .stats.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .stat { padding: 10px; }
@@ -956,8 +970,9 @@ const Mock = (() => {
 let S = null;       // { me, users, leaves, holidays } — 서버가 권한에 맞는 일정만 내려줌 (PM 전체 / PL 파트 / 파트원 본인)
 let screen = 'loading'; // loading | setup | login | app | error
 let screenMsg = '';
+const TAB_KEY = 'team-off-tab'; // 마지막에 보던 탭 (이 기기만)
 const ui = {
-  tab: 'cal',
+  tab: (() => { try { return localStorage.getItem(TAB_KEY) || 'cal'; } catch (e) { return 'cal'; } })(),
   month: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); })(),
   mineOnly: false,
   part: '', // PM 파트 필터
@@ -1102,12 +1117,12 @@ function render() {
   $app.innerHTML = bar + `
     <header class="top"><div class="top-inner">
       <div class="brand">
-        <h1>슈퍼쏠 전담반 일정</h1>
-        <span style="display:flex;align-items:center;gap:2px">
+        <h1><span class="t-long">슈퍼쏠 전담반 일정</span><span class="t-short">슈퍼쏠 일정</span></h1>
+        <span style="display:flex;align-items:center;gap:2px;flex:none">
         ${bellButton()}
         ${mealButton()}
         <button class="icon-btn ghost-btn" data-act="refresh" title="최신 내용 불러오기" aria-label="최신 내용 불러오기">↻</button>
-        <button class="whoami btn ghost sm" data-act="account">${esc(S.me.name)} <span class="badge ${canSeeTeam() ? 'admin' : ''}">${esc(roleLabel(S.me))}</span> ▾</button></span>
+        <button class="whoami btn ghost sm" data-act="account">${esc(S.me.name)} <span class="badge role-badge ${canSeeTeam() ? 'admin' : ''}">${esc(roleLabel(S.me))}</span> ▾</button></span>
       </div>
       <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}</button>`).join('')}</nav>
     </div></header>
@@ -1246,12 +1261,14 @@ function viewCalendar() {
     </div>`;
   }
 
-  const upcoming = (S.events || []).filter((e) => e.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate)).slice(0, 3);
-  const upcomingHtml = upcoming.length ? `
-    <div class="evt-list">${upcoming.map((e) => `
-      <div class="card evt-item" data-act="day" data-v="${e.startDate < today ? today : e.startDate}" style="cursor:pointer">
-        <div class="when">★ ${esc(evtWhen(e))}</div><div class="what"><b>${esc(e.title)}</b>${e.memo ? `<span class="muted small">${esc(e.memo)}</span>` : ''}</div></div>`).join('')}
-      ${(S.events || []).filter((e) => e.endDate >= today).length > 3 ? '<button class="btn sm ghost" data-act="tab" data-v="events" style="align-self:flex-start">중요 일정 더 보기</button>' : ''}
+  // 다가오는 중요 일정: 한 줄씩 (누르면 그 날짜 상세 — 내용은 상세에서). 휴대폰은 2개, PC는 3개까지
+  const allUp = (S.events || []).filter((e) => e.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const upMax = window.matchMedia('(max-width: 640px)').matches ? 2 : 3;
+  const upcomingHtml = allUp.length ? `
+    <div class="card evt-compact">${allUp.slice(0, upMax).map((e) => `
+      <div class="evt-row" data-act="day" data-v="${e.startDate < today ? today : e.startDate}" title="${esc(e.title)}${e.memo ? ' — ' + esc(e.memo) : ''}">
+        <span class="when">★ ${esc(evtWhen(e))}</span><span class="what">${esc(e.title)}</span></div>`).join('')}
+      ${allUp.length > upMax ? `<div class="evt-row more" data-act="tab" data-v="events">중요 일정 ${allUp.length - upMax}건 더 보기 ›</div>` : ''}
     </div>` : '';
 
   return upcomingHtml + statsHtml + `
@@ -2160,6 +2177,8 @@ function openAccount() {
   const m = openModal(`<header><h3>${esc(S.me.name)} <span class="muted small">${esc(S.me.email)}</span></h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       <button class="btn" data-act="guide" style="width:100%;margin-bottom:12px">사용 안내 · 업데이트 내역</button>
+      <div class="field" style="margin-top:0"><label>화면 모드 <span class="muted" style="font-weight:400">이 기기에만 적용</span></label>
+        <div class="seg">${[['', '시스템 설정 따름'], ['light', '밝게'], ['dark', '어둡게']].map(([v, t]) => `<button type="button" data-act="setTheme" data-v="${v}" class="${themePref() === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>
       ${urlToken ? `<div class="infobox" style="margin:0 0 8px">이 기기에서 <b>로그인 유지 중</b>입니다. 지금 주소창 주소에 로그인 정보가 들어 있으니 <b>다른 사람에게 보내지 마세요.</b>
         직원에게 사이트를 알려줄 때는 팀원 관리의 안내 메시지 주소를 쓰세요.</div>` : ''}
       <div class="field" style="margin-top:0"><label>기본 대직자 <span class="muted" style="font-weight:400">휴가 등록할 때 자동으로 채워집니다 (최대 ${MAX_SUBS}명)</span></label><div data-defsubs></div></div>
@@ -2224,10 +2243,17 @@ const GUIDE = [
   { t: '편하게 쓰기', items: [
     { x: '로그인할 때 [이 기기에서 로그인 유지]를 켜면 180일 동안 다시 로그인하지 않아도 돼요.' },
     { x: '휴대폰 홈 화면에 추가하면 앱처럼 쓸 수 있어요. 아이폰은 Safari 공유 버튼, 안드로이드는 Chrome 메뉴에서 [홈 화면에 추가].' },
-    { x: '화면은 10분마다 자동으로 최신 내용을 불러와요. 바로 보고 싶으면 오른쪽 위 ↻ 를 눌러요.' },
+    { x: '화면은 10분마다 자동으로 최신 내용을 불러와요. 바로 보고 싶으면 오른쪽 위 ↻ 를 누르거나, 홈 화면 앱에서는 맨 위에서 아래로 당기세요.' },
+    { x: '이름 메뉴에서 화면 모드(시스템 설정 따름 · 밝게 · 어둡게)를 고를 수 있어요.' },
   ] },
 ];
 const UPDATES = [
+  { d: '2026-10-14', items: [
+    { x: '휴대폰에서 상단이 한 줄로 정리되고, 다가오는 중요 일정이 한 줄씩 간단하게 보여요 (누르면 그 날짜 상세).' },
+    { x: '이름 메뉴에서 화면 모드(시스템 설정 따름 · 밝게 · 어둡게)를 고를 수 있어요.' },
+    { x: '앱을 다시 열면 마지막에 보던 탭으로 열려요. 휴가 등록 화면에 [오늘] [내일] 버튼이 생겼어요.' },
+    { x: '캘린더에서 휴가를 등록하면 그 날짜 칸이 잠깐 강조돼요. 홈 화면 앱에서는 맨 위에서 아래로 당기면 새로고침돼요.' },
+  ] },
   { d: '2026-10-12', items: [
     { x: '반반차가 생겼어요. 오후에만 쓰고, 연차에서 0.25일이 빠져요.' },
     { r: 'ds', x: "업무 일정 공개 범위에 'DS직원만'이 생겼어요. DS직원과 PM에게만 보여요." },
@@ -2291,6 +2317,32 @@ function openGuide() {
     try { localStorage.setItem(GUIDE_SEEN_KEY, latestUpdate()); } catch (e) {}
     render(); // 종 아이콘의 점 없애기 (열린 창은 그대로)
   }
+}
+
+/** 캘린더에서 그 날짜가 있는 달로 가서 칸을 잠깐 강조 (휴가 등록·수정 후) */
+function flashDate(ds) {
+  const d = parse(ds);
+  if (ui.month.getFullYear() !== d.getFullYear() || ui.month.getMonth() !== d.getMonth()) { ui.month = new Date(d.getFullYear(), d.getMonth(), 1); render(); }
+  const cell = document.querySelector(`.cal-grid .day[data-v="${ds}"]`);
+  if (!cell) return;
+  cell.classList.add('flash');
+  cell.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  setTimeout(() => cell.classList.remove('flash'), 2000);
+}
+
+/* ---------- 화면 모드 (시스템 · 밝게 · 어둡게, 이 기기만) ---------- */
+const THEME_KEY = 'team-off-theme';
+function themePref() { try { return localStorage.getItem(THEME_KEY) || ''; } catch (e) { return ''; } }
+function applyTheme(v) {
+  const root = document.documentElement;
+  if (!root) return;
+  if (v === 'light' || v === 'dark') root.dataset.theme = v;
+  else delete root.dataset.theme;
+}
+function setTheme(v) {
+  try { if (v) localStorage.setItem(THEME_KEY, v); else localStorage.removeItem(THEME_KEY); } catch (e) {}
+  applyTheme(v);
+  if ($modal) $modal.querySelectorAll('[data-act="setTheme"]').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
 }
 
 /* ---------- 날짜 상세 ---------- */
@@ -2363,7 +2415,9 @@ function openLeaveForm(id, date, restore) {
       <div class="field"><label>유형 <span class="req">*</span></label>
         <div class="seg">${TYPES.map((t) => `<button type="button" data-type="${t}" class="${f.type === t ? 'on' : ''}"><i class="dot t-${t}"></i>${t}</button>`).join('')}</div></div>
       <div class="row2">
-        <div class="field"><label data-startlabel>시작일 <span class="req">*</span></label><input type="date" name="startDate" value="${f.startDate}"></div>
+        <div class="field"><label><span data-startlabel>시작일 <span class="req">*</span></span>
+          <span class="quick-dates"><button type="button" class="btn sm ghost" data-qd="0">오늘</button><button type="button" class="btn sm ghost" data-qd="1">내일</button></span></label>
+          <input type="date" name="startDate" value="${f.startDate}"></div>
         <div class="field" data-endwrap><label>종료일 <span class="req">*</span></label><input type="date" name="endDate" value="${f.endDate}"></div>
       </div>
       <div class="field"><label>대직자 <span class="req">*</span> <span class="muted" style="font-weight:400">최대 ${MAX_SUBS}명 · 한 명이라도 같은 날 부재면 경고</span></label><div data-subs></div>
@@ -2429,6 +2483,10 @@ function openLeaveForm(id, date, restore) {
   }));
   if (q('[name=email]')) q('[name=email]').onchange = (e) => { f.email = e.target.value; f.subs = lastSubs(f.email); update(); };
   q('[name=startDate]').onchange = (e) => { f.startDate = e.target.value; update(); };
+  m.querySelectorAll('[data-qd]').forEach((b) => (b.onclick = () => { // [오늘] [내일]: 하루짜리로
+    f.startDate = f.endDate = ymd(addDays(parse(todayStr()), +b.dataset.qd));
+    q('[name=startDate]').value = f.startDate; q('[name=endDate]').value = f.endDate; update();
+  }));
   q('[name=endDate]').onchange = (e) => { f.endDate = e.target.value; update(); };
   q('[name=memo]').oninput = (e) => (f.memo = e.target.value);
   if (q('[data-del]')) q('[data-del]').onclick = () => removeLeave(f.id);
@@ -2457,7 +2515,9 @@ function openLeaveForm(id, date, restore) {
       if (!ok) return openLeaveForm(id, null, f);
     }
     const asDefault = f.showDef && f.saveDefault;
-    run(api('saveLeave', { ...p, saveDefault: asDefault }), (ex ? '수정했습니다.' : '등록했습니다.') + (asDefault ? ' 기본 대직자도 저장했습니다.' : ''));
+    const fromCal = ui.tab === 'cal';
+    run(api('saveLeave', { ...p, saveDefault: asDefault }), (ex ? '수정했습니다.' : '등록했습니다.') + (asDefault ? ' 기본 대직자도 저장했습니다.' : ''),
+      () => { if (fromCal) flashDate(p.startDate); });
   };
   update();
 }
@@ -2792,6 +2852,8 @@ async function run(promise, okMsg, after) {
   }
 }
 
+applyTheme(themePref()); // 저장해 둔 화면 모드
+
 async function boot() {
   if (MOVED) return render(); // 예전 주소: 서버를 부르지 않고 안내만
   W.loaded = false; W.tasks = []; W.error = '';
@@ -2840,6 +2902,7 @@ document.addEventListener('click', (e) => {
       if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
       else ui.tab = v;
       if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
+      try { localStorage.setItem(TAB_KEY, ui.tab); } catch (e) {}
       render(); window.scrollTo(0, 0); break;
     case 'month': {
       const t0 = new Date();
@@ -2869,6 +2932,7 @@ document.addEventListener('click', (e) => {
     case 'weekAbsent': openWeekAbsent(v); break;
     case 'news': openNews(); break;
     case 'guide': openGuide(); break;
+    case 'setTheme': setTheme(v); break;
     case 'annualForm': openAnnualForm(); break;
     case 'bulkLeaves': openLeaveBulkForm(); break;
     case 'newsGo': goNews(v); break;
@@ -2945,6 +3009,30 @@ let lastRefresh = 0;
 let refreshing = false;
 const REFRESH_EVERY = 10 * 60000; // 화면에 떠 있는 동안 10분마다
 const REFRESH_ON_RETURN = 5 * 60000; // 앱으로 돌아왔을 때 마지막 갱신 후 5분이 지났으면 새로고침
+
+/*
+ * 홈 화면에 추가한 앱(standalone)은 브라우저의 '당겨서 새로고침'이 없어서 직접 만든다. (브라우저에서는 브라우저 기능과 겹치므로 켜지 않음)
+ * 맨 위에서 70px 넘게 당겼다 놓으면 ↻ 버튼과 같은 동작
+ */
+(function pullToRefresh() {
+  const standalone = typeof window !== 'undefined' && ((window.navigator && window.navigator.standalone) || window.matchMedia('(display-mode: standalone)').matches);
+  if (!standalone || typeof document === 'undefined' || !document.body) return;
+  const bar = document.createElement('div');
+  bar.className = 'ptr';
+  document.body.appendChild(bar);
+  let y0 = null, dy = 0;
+  const reset = () => { y0 = null; dy = 0; bar.style.opacity = 0; bar.style.transform = 'translateY(-40px)'; };
+  window.addEventListener('touchstart', (e) => { y0 = window.scrollY <= 0 && !$modal && screen === 'app' ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+  window.addEventListener('touchmove', (e) => {
+    if (y0 === null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0) return reset();
+    bar.textContent = dy > 70 ? '↻ 놓으면 새로고침' : '↓ 당겨서 새로고침';
+    bar.style.opacity = dy > 15 ? 1 : 0;
+    bar.style.transform = `translateY(${Math.min(dy, 90) - 40}px)`;
+  }, { passive: true });
+  window.addEventListener('touchend', () => { if (y0 !== null && dy > 70) refreshData(true); reset(); });
+})();
 
 async function refreshData(manual) {
   if (refreshing || screen !== 'app' || !S || MOVED) return;
