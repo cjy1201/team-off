@@ -2092,6 +2092,7 @@ function openNews() {
   openModal(`<header><h3>새 소식</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       <button class="btn" data-act="guide" style="width:100%;margin-bottom:8px">사용 안내 · 업데이트 내역 <span class="muted small">(최근 ${Number(latestUpdate().slice(5, 7))}/${Number(latestUpdate().slice(8))} 업데이트)</span>${newGuide() ? '<span class="badge new">NEW</span>' : ''}</button>
+      ${IS_STANDALONE ? '' : '<button class="btn" data-act="a2hs" style="width:100%;margin-bottom:8px">홈 화면에 추가하기 <span class="muted small">(앱처럼 쓰기)</span></button>'}
       ${n.items.length ? n.items.map((x) => `<div class="news-item ${x.at > seen ? 'unread' : ''}" ${x.go ? `data-act="newsGo" data-v="${esc(x.go)}"` : ''}>
         <div class="nt">${esc(x.text)}</div><div class="when">${esc(agoText(x.at))}</div></div>`).join('') : '<div class="empty">새 소식이 없습니다.</div>'}
       <p class="muted small" style="margin:12px 0 0">나를 대직자로 지정하거나, 나에게 업무가 배정되거나, 중요 일정이 바뀌면 여기에 알려드려요. 내가 한 일은 오지 않아요.</p>
@@ -2385,14 +2386,14 @@ const GUIDE = [
   ] },
   { t: '편하게 쓰기', items: [
     { x: '로그인할 때 [이 기기에서 로그인 유지]를 켜면 180일 동안 다시 로그인하지 않아도 돼요.' },
-    { x: '휴대폰 홈 화면에 추가하면 앱처럼 쓸 수 있어요 (아래 메뉴가 생기고 화면이 넓어져요). 이름 메뉴의 [홈 화면에 추가하기]에서 방법을 볼 수 있어요. 처음 한 번은 앱에서 로그인하세요.' },
+    { x: '휴대폰 홈 화면에 추가하면 앱처럼 쓸 수 있어요 (아래 메뉴가 생기고 화면이 넓어져요). 종 아이콘이나 이름 메뉴의 [홈 화면에 추가하기]에서 방법을 볼 수 있어요. 처음 한 번은 앱에서 로그인하세요.' },
     { x: '화면은 10분마다 자동으로 최신 내용을 불러와요. 바로 보고 싶으면 오른쪽 위 ↻ 를 누르거나, 홈 화면 앱에서는 맨 위에서 아래로 당기세요.' },
     { x: '이름 메뉴에서 화면 모드(시스템 설정 따름 · 밝게 · 어둡게)를 고를 수 있어요.' },
   ] },
 ];
 const UPDATES = [
   { d: '2026-10-15', items: [
-    { x: '휴대폰 홈 화면에 추가해서 쓰면 화면 아래에 메뉴(캘린더 · 중요 · 업무 · 내 일정 · 더보기)가 생겨요. 이름 메뉴의 [홈 화면에 추가하기]에서 방법을 볼 수 있어요.' },
+    { x: '휴대폰 홈 화면에 추가해서 쓰면 화면 아래에 메뉴(캘린더 · 중요 · 업무 · 내 일정 · 더보기)가 생겨요. 종 아이콘이나 이름 메뉴의 [홈 화면에 추가하기]에서 방법을 볼 수 있어요.' },
     { x: '중요 일정에 담당자가 생겼어요. 담당자로 지정되면 새 소식으로 알려주고, 다가오는 중요 일정에 [내 담당]으로 표시돼요.' },
     { r: 'pm', x: '[공휴일] 탭에서 공휴일 이름을 [수정]할 수 있어요.' },
     { x: "이름이 '슈퍼SOL 전담반 일정'으로 바뀌었어요." },
