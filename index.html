@@ -163,6 +163,7 @@
   .chip { display: flex; align-items: center; gap: 3px; font-size: 11.5px; padding: 1px 5px; border-radius: 4px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
   .chip .nm { overflow: hidden; text-overflow: ellipsis; }
   .chip.conflict { outline: 2px solid var(--danger); outline-offset: -1px; }
+  .chip.mine { box-shadow: inset 0 0 0 1.5px #fff; font-weight: 800; } /* 내 일정: 칩 안쪽 흰 테두리 + 굵게 */
   .chip .w { flex: none; }
   .more { font-size: 11px; color: var(--muted); margin-top: 2px; padding-left: 4px; }
   .t-연차 { background: var(--t-annual); } .t-오전반차 { background: var(--t-am); } .t-오후반차 { background: var(--t-pm); }
@@ -194,6 +195,7 @@
   tr:last-child td { border-bottom: 0; }
 
   /* modal */
+  .overlay, .modal { overscroll-behavior: contain; }
   .overlay { position: fixed; inset: 0; background: rgba(15,17,21,.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
   .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 480px; max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 20px 40px rgba(0,0,0,.2); }
   .modal.wide { max-width: 640px; }
@@ -1363,7 +1365,7 @@ function viewCalendar() {
       ${shown.map((l) => {
         const c = conflictsOf(l).length;
         const cover = l.email !== me && l.substitutes.includes(me);
-        return `<div class="chip t-${l.type} ${c ? 'conflict' : ''} ${cover ? 'cover' : ''}" title="${esc(nameOf(l.email))} ${l.type}${cover ? ' (내가 대직)' : ''}${c ? ' — 대직 겹침' : ''}">${c ? '<span class="w">⚠</span>' : ''}${cover ? '<span class="w">↺</span>' : ''}<span class="nm">${esc(nameOf(l.email))}</span><span class="ty">${SHORT[l.type]}</span></div>`;
+        return `<div class="chip t-${l.type} ${c ? 'conflict' : ''} ${cover ? 'cover' : ''} ${l.email === me ? 'mine' : ''}" title="${esc(nameOf(l.email))} ${l.type}${cover ? ' (내가 대직)' : ''}${c ? ' — 대직 겹침' : ''}">${c ? '<span class="w">⚠</span>' : ''}${cover ? '<span class="w">↺</span>' : ''}<span class="nm">${esc(nameOf(l.email))}</span><span class="ty">${SHORT[l.type]}</span></div>`;
       }).join('')}
       ${items.length > shown.length ? `<div class="more">+${items.length - shown.length}</div>` : ''}
     </div>`;
@@ -2112,7 +2114,7 @@ function goNews(go) {
   if (kind === 'day') {
     const d = parse(val);
     ui.tab = 'cal'; ui.month = new Date(d.getFullYear(), d.getMonth(), 1);
-    render(); window.scrollTo(0, 0); openDay(val);
+    render(); flashDate(val); // 그 날짜 칸으로 스크롤해서 잠깐 강조 (칸을 누르면 상세)
   } else if (kind === 'tab') {
     ui.tab = val; render(); window.scrollTo(0, 0);
   }
@@ -2229,7 +2231,10 @@ function openModal(html, dismiss) {
   $modal.querySelectorAll('[data-close]').forEach((b) => (b.onclick = dismissModal));
   return $modal;
 }
-function closeModal() { if ($modal) { $modal.remove(); $modal = null; } onDismiss = null; }
+function closeModal() {
+  if ($modal) { $modal.remove(); $modal = null; }
+  onDismiss = null;
+}
 /** 바깥 클릭 / ESC / 닫기 — 확인창이면 '취소'로 처리 */
 function dismissModal() { const cb = onDismiss; closeModal(); if (cb) cb(); }
 
@@ -2393,6 +2398,9 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-15', items: [
+    { x: '캘린더에서 내 일정은 칩 안쪽에 흰 테두리와 굵은 글씨로 보여요.' },
+    { x: '휴대폰에서 아래에서 올라온 창은 아래로 쓸어내리면 닫혀요. 보고 있는 탭을 다시 누르면 맨 위로 가요.' },
+    { x: '새 소식을 누르면 그 날짜 칸이 잠깐 강조돼요. 저장할 때는 버튼이 [처리 중…]으로 바뀌어요.' },
     { x: '휴대폰 홈 화면에 추가해서 쓰면 화면 아래에 메뉴(캘린더 · 중요 · 업무 · 내 일정 · 더보기)가 생겨요. 종 아이콘이나 이름 메뉴의 [홈 화면에 추가하기]에서 방법을 볼 수 있어요.' },
     { x: '중요 일정에 담당자가 생겼어요. 담당자로 지정되면 새 소식으로 알려주고, 다가오는 중요 일정에 [내 담당]으로 표시돼요.' },
     { r: 'pm', x: '[공휴일] 탭에서 공휴일 이름을 [수정]할 수 있어요.' },
@@ -2980,6 +2988,13 @@ function toast(msg, err) {
 
 let $loading = null;
 function loading(on) {
+  // 열린 창의 주 버튼(저장·등록 등)을 '처리 중…'으로 바꾸고 잠가서 두 번 눌리지 않게
+  if ($modal) {
+    $modal.querySelectorAll('footer .btn.primary, [data-save]').forEach((b) => {
+      if (on && !b.dataset.busy) { b.dataset.busy = b.innerHTML; b.innerHTML = '처리 중…'; b.disabled = true; }
+      if (!on && b.dataset.busy) { b.innerHTML = b.dataset.busy; delete b.dataset.busy; b.disabled = false; }
+    });
+  }
   if (on && !$loading) { $loading = document.createElement('div'); $loading.className = 'loading'; $loading.innerHTML = '<div class="spinner"></div>'; document.body.appendChild($loading); }
   if (!on && $loading) { $loading.remove(); $loading = null; }
 }
@@ -3068,6 +3083,7 @@ document.addEventListener('click', (e) => {
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
     case 'tab':
       closeModal(); // 하단 탭바 '더보기' 창에서 고른 경우
+      if (v === ui.tab) { window.scrollTo({ top: 0, behavior: 'smooth' }); break; } // 보고 있는 탭을 다시 누르면 맨 위로
       if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
       else ui.tab = v;
       if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
@@ -3182,6 +3198,43 @@ let lastRefresh = 0;
 let refreshing = false;
 const REFRESH_EVERY = 10 * 60000; // 화면에 떠 있는 동안 10분마다
 const REFRESH_ON_RETURN = 5 * 60000; // 앱으로 돌아왔을 때 마지막 갱신 후 5분이 지났으면 새로고침
+
+/* 휴대폰: 아래에서 올라온 창을 아래로 쓸어내리면 닫기 (창 안이 맨 위로 스크롤된 상태에서만) */
+(function swipeDownClose() {
+  if (typeof window === 'undefined') return;
+  let st = null;
+  window.addEventListener('touchstart', (e) => {
+    const m = e.target && e.target.closest && e.target.closest('.modal');
+    const typing = e.target.closest && e.target.closest('input, textarea, select');
+    st = m && !typing && m.scrollTop <= 0 && window.matchMedia('(max-width: 640px)').matches
+      ? { m, y0: e.touches[0].clientY, x0: e.touches[0].clientX, t0: Date.now(), dy: 0, mode: '' } : null;
+  }, { passive: true });
+  window.addEventListener('touchmove', (e) => {
+    if (!st) return;
+    const dy = e.touches[0].clientY - st.y0, dx = e.touches[0].clientX - st.x0;
+    if (!st.mode && (Math.abs(dy) > 8 || Math.abs(dx) > 8)) st.mode = dy > 0 && Math.abs(dy) > Math.abs(dx) && st.m.scrollTop <= 0 ? 'down' : 'no';
+    if (st.mode !== 'down') return;
+    if (e.cancelable) e.preventDefault(); // 끌어내리는 동작이 뒤 화면 스크롤로 넘어가지 않게 (아이폰에서 뒤 화면이 맨 위로 튀던 문제)
+    st.dy = Math.max(dy, 0);
+    st.m.style.transition = 'none';
+    st.m.style.transform = `translateY(${st.dy}px)`;
+  }, { passive: false });
+  window.addEventListener('touchend', () => {
+    if (!st) return;
+    const { m, dy, t0, mode } = st;
+    st = null;
+    if (mode !== 'down') return;
+    const fast = dy > 40 && Date.now() - t0 < 250;
+    if (dy > 110 || fast) {
+      m.style.transition = 'transform .18s ease-in';
+      m.style.transform = 'translateY(100%)';
+      setTimeout(dismissModal, 170);
+    } else {
+      m.style.transition = 'transform .2s ease-out';
+      m.style.transform = '';
+    }
+  }, { passive: true });
+})();
 
 /*
  * 캘린더를 좌우로 넘기기 (휴가 캘린더 · 업무 캘린더)
