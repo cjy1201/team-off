@@ -2096,7 +2096,8 @@ function viewHolidays() {
     <div class="infobox" style="margin:0 0 12px">공휴일은 캘린더에 빨간색으로 표시되고 휴가 사용일수 계산에서 제외됩니다. 임시공휴일·대체공휴일은 여기서 추가하세요.</div>
     <div class="card table-wrap"><table><tbody>
       ${list.length ? list.map((h) => `<tr><td>${fmtShort(h.date)}</td><td style="width:100%">${esc(h.name)}</td>
-        <td><button class="btn sm danger" data-act="delHoliday" data-v="${h.date}">삭제</button></td></tr>`).join('') : '<tr><td class="empty">등록된 공휴일이 없습니다.</td></tr>'}
+        <td style="white-space:nowrap"><button class="btn sm" data-act="editHoliday" data-v="${h.date}">수정</button>
+          <button class="btn sm danger" data-act="delHoliday" data-v="${h.date}">삭제</button></td></tr>`).join('') : '<tr><td class="empty">등록된 공휴일이 없습니다.</td></tr>'}
     </tbody></table></div>`;
 }
 
@@ -2278,6 +2279,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-15', items: [
+    { r: 'pm', x: '[공휴일] 탭에서 공휴일 이름을 [수정]할 수 있어요.' },
     { x: "이름이 '슈퍼SOL 전담반 일정'으로 바뀌었어요." },
     { x: '휴대폰에서 캘린더를 좌우로 밀면 이전 · 다음 달로 넘어가요 (업무 일정 캘린더도).' },
     { r: 'team', x: '[전체 일정] 위 검색칸에 이름을 입력하면 그 사람의 일정 전체로 바로 가요.' },
@@ -2832,15 +2834,18 @@ async function resetPw(email) {
 }
 
 /* ---------- 공휴일 ---------- */
-function openHolidayForm() {
+/** 공휴일 추가 · 이름 수정 (수정할 때는 날짜는 그대로 — 날짜를 바꾸려면 삭제 후 추가) */
+function openHolidayForm(date) {
+  const ex = date ? S.holidays.find((h) => h.date === date) : null;
   const m = openModal(`
-    <header><h3>공휴일 추가</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <header><h3>${ex ? '공휴일 이름 수정' : '공휴일 추가'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
-      <div class="field"><label>날짜 <span class="req">*</span></label><input type="date" name="date" value="${ui.holYear}-01-01"></div>
-      <div class="field"><label>이름 <span class="req">*</span></label><input name="name" placeholder="예: 임시공휴일"></div>
+      <div class="field"><label>날짜 <span class="req">*</span></label><input type="date" name="date" value="${ex ? ex.date : ui.holYear + '-01-01'}" ${ex ? 'disabled' : ''}></div>
+      <div class="field"><label>이름 <span class="req">*</span></label><input name="name" maxlength="30" placeholder="예: 임시공휴일" value="${ex ? esc(ex.name) : ''}"></div>
     </div>
-    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>추가</button></footer>`);
-  m.querySelector('[data-save]').onclick = () => run(api('saveHoliday', { date: m.querySelector('[name=date]').value, name: m.querySelector('[name=name]').value }), '추가했습니다.');
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '추가'}</button></footer>`);
+  if (ex) { const i = m.querySelector('[name=name]'); i.focus(); i.select(); }
+  m.querySelector('[data-save]').onclick = () => run(api('saveHoliday', { date: m.querySelector('[name=date]').value, name: m.querySelector('[name=name]').value }), ex ? '수정했습니다.' : '추가했습니다.');
 }
 
 /* =========================================================
@@ -2963,6 +2968,7 @@ document.addEventListener('click', (e) => {
     case 'delUser': removeUser(v); break;
     case 'resetPw': resetPw(v); break;
     case 'newHoliday': openHolidayForm(); break;
+    case 'editHoliday': openHolidayForm(v); break;
     case 'newEvent': openEventForm(null, v); break;
     case 'wpart': ui.workPart = v; render(); break;
     case 'wmonth': {
