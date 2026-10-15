@@ -213,7 +213,9 @@
   .evt-row .what { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .evt-row.more { color: var(--muted); font-size: 13px; border-left-color: transparent; }
   .evt-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-left: 3px solid var(--evt); }
-  .evt-item .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; min-width: 92px; }
+  .evt-item .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; flex: none; line-height: 1.5; min-width: 98px; }
+  .evt-item .when .sub { font-weight: 600; padding-left: 1.15em; } /* ★ 아래로 줄 맞춤 */
+  .evt-actions { display: flex; flex-direction: column; gap: 6px; flex: none; }
   .evt-item .what { flex: 1; min-width: 0; }
   .evt-item .what b { display: block; }
   .chip.cover { opacity: .85; background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.18) 6px 12px); }
@@ -1665,11 +1667,13 @@ async function removeTask(id) {
 }
 
 /* ---------- 중요 일정 (등록·수정은 PM, 보기는 전체) ---------- */
+/** 중요 일정 카드: 왼쪽은 날짜 / (~ 끝날짜) / 시간을 줄로 나누고, 수정·삭제는 오른쪽에 세로로 → 가운데 내용 칸을 넓게 */
 function evtItem(e) {
+  const lines = [fmtShort(e.startDate), e.endDate !== e.startDate ? '~ ' + fmtShort(e.endDate) : '', e.time || ''].filter(Boolean);
   return `<div class="card evt-item ${e.endDate < todayStr() ? 'past' : ''}" style="${e.endDate < todayStr() ? 'opacity:.6' : ''}">
-    <div class="when">★ ${esc(evtWhen(e))}</div>
+    <div class="when">${lines.map((x, i) => `<div${i ? ' class="sub"' : ''}>${i ? '' : '★ '}${esc(x)}</div>`).join('')}</div>
     <div class="what"><b>${esc(e.title)}</b>${(e.assignees || []).length ? `<div class="small">담당 ${e.assignees.map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ')}</div>` : ''}${e.memo ? `<div class="muted small" style="white-space:pre-wrap">${esc(e.memo)}</div>` : ''}</div>
-    ${isAdmin() ? `<div class="actions" style="display:flex;gap:6px"><button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
+    ${isAdmin() ? `<div class="actions evt-actions"><button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
       <button class="btn sm danger" data-act="delEvent" data-v="${e.id}">삭제</button></div>` : ''}</div>`;
 }
 
