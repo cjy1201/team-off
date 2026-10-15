@@ -61,6 +61,27 @@
   .quick-dates .btn { padding: 2px 8px; font-size: 12px; }
   .ptr { position: fixed; left: 0; right: 0; top: 0; z-index: 60; text-align: center; font-size: 13px; color: var(--muted); padding: 10px; opacity: 0; transform: translateY(-40px); pointer-events: none; transition: opacity .15s; }
   .people-search { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); width: 130px; }
+  .bnav { display: none; }
+  @media (max-width: 640px) {
+    body.navb nav.tabs { display: none; }
+    body.navb main { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+    body.navb .toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+    .bnav { display: grid; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--surface); border-top: 1px solid var(--border);
+      padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); }
+    .bnav button { border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 4px; font-size: 11px; font-weight: 600; }
+    .bnav button svg { display: block; flex: none; width: 23px; height: 23px; } /* iOS: 버튼 속 svg는 block이어야 보임 */
+    .bnav button.on { color: var(--primary); }
+  }
+  .a2hs { display: flex; align-items: center; gap: 8px; background: var(--primary-weak); color: var(--text); border-radius: 10px; padding: 8px 8px 8px 14px; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
+  .a2hs span { flex: 1; min-width: 0; }
+  .a2hs-steps { margin: 0; padding-left: 20px; line-height: 1.7; }
+  .a2hs-steps li { margin: 6px 0; }
+  .inline-ic { display: inline-block; width: 18px; height: 18px; vertical-align: -3px; color: var(--primary); }
+  .more-list { display: flex; flex-direction: column; }
+  .more-list button { display: flex; justify-content: space-between; align-items: center; border: 0; border-bottom: 1px solid var(--border); background: none; padding: 14px 4px; font-size: 15px; font-weight: 600; text-align: left; }
+  .more-list button:last-child { border-bottom: 0; }
+  .more-list button.on { color: var(--primary); }
+  .more-list button span { color: var(--muted); }
   .num-input { padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 64px; text-align: right; }
   .grant-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
   .grant-row select, .grant-row input:not(.num-input) { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
@@ -317,7 +338,7 @@
     .item { flex-wrap: wrap; }
     .item .actions { width: 100%; justify-content: flex-end; }
     .overlay { align-items: flex-end; padding: 0; }
-    .modal { max-width: none; border-radius: 16px 16px 0 0; max-height: 92vh; }
+    .modal { max-width: none; border-radius: 16px 16px 0 0; max-height: 92vh; padding-bottom: env(safe-area-inset-bottom); } /* 아이폰 홈 바와 겹치지 않게 */
     .row2 { grid-template-columns: 1fr 1fr; }
   }
 </style>
@@ -1137,7 +1158,83 @@ function render() {
       </div>
       <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}</button>`).join('')}</nav>
     </div></header>
-    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays, history: viewHistory })[ui.tab]()}</main>`;
+    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays, history: viewHistory })[ui.tab]()}</main>
+    ${NAV_BOTTOM ? bottomNav(tabs) : ''}`;
+  if (document.body && document.body.classList) document.body.classList.toggle('navb', NAV_BOTTOM);
+}
+
+/*
+ * 하단 탭바 — 홈 화면에 추가한 앱(standalone)의 휴대폰 화면에서만 (사파리 브라우저는 아래 주소창과 겹쳐 답답하므로 위쪽 탭 유지).
+ * PC 폭(641px 이상)에서는 CSS가 숨기고 위쪽 탭을 보여준다. 비교용으로 주소에 ?bottomnav=1 을 붙이면 브라우저에서도 켜진다.
+ * 캘린더 · 중요 · 업무 · 내 일정 + (전체/파트 하나면 그대로, 여러 개면 '더보기')
+ */
+const IS_STANDALONE = typeof window !== 'undefined' && !!((window.navigator && window.navigator.standalone) || window.matchMedia('(display-mode: standalone)').matches);
+const UA = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/.test(UA);
+/* 안드로이드 크롬 · 삼성 인터넷: 브라우저가 '앱 설치' 창을 열어준다 → [앱 설치] 버튼으로 바로 띄움 (아이폰은 불가 → 방법 안내) */
+let installPrompt = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; if (screen === 'app') render(); });
+  window.addEventListener('appinstalled', () => { installPrompt = null; if (screen === 'app') render(); });
+}
+const NAV_BOTTOM = IS_STANDALONE || (typeof location !== 'undefined' && /[?&]bottomnav=1/.test(location.search || ''));
+const BN_ICON = {
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  events: '<path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
+  work: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8.5 7V5.5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2V7M3 12.5h18"/>',
+  mine: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>',
+  all: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/>',
+  more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+};
+function bottomNav(tabs) {
+  const label = { cal: '캘린더', events: '중요', work: '업무', mine: '내 일정', more: '더보기', all: canSeeAll() ? '전체' : '파트' };
+  const main = ['cal', 'events', 'work', 'mine'];
+  const extra = tabs.filter(([k]) => !main.includes(k));
+  const items = main.filter((k) => tabs.some((t) => t[0] === k)).map((k) => [k, label[k], 'tab']);
+  if (extra.length === 1) items.push([extra[0][0], label[extra[0][0]] || extra[0][1], 'tab']);
+  else if (extra.length > 1) items.push(['more', label.more, 'navMore']);
+  const on = (k) => (k === 'more' ? extra.some(([x]) => x === ui.tab) : ui.tab === k);
+  return `<nav class="bnav" style="grid-template-columns: repeat(${items.length}, 1fr)">${items.map(([k, t, act]) => `<button class="${on(k) ? 'on' : ''}" data-act="${act}" data-v="${k}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${BN_ICON[k] || BN_ICON.more}</svg><span>${t}</span></button>`).join('')}</nav>`;
+}
+/** 홈 화면에 추가 안내 띠 — 휴대폰 브라우저로 들어온 사람에게만, 닫으면 이 기기에서는 다시 안 뜸 */
+const A2HS_KEY = 'team-off-a2hs-hide';
+function a2hsBanner() {
+  if (IS_STANDALONE || !(IS_IOS || IS_ANDROID || installPrompt)) return '';
+  try { if (localStorage.getItem(A2HS_KEY)) return ''; } catch (e) {}
+  return `<div class="a2hs"><span>홈 화면에 추가하면 앱처럼 쓸 수 있어요</span>
+    <button class="btn sm primary" data-act="a2hs">${installPrompt ? '앱 설치' : '방법 보기'}</button>
+    <button class="btn sm ghost" data-act="a2hsHide" aria-label="안내 닫기">✕</button></div>`;
+}
+async function addToHome() {
+  if (installPrompt) { // 안드로이드: 브라우저 설치 창
+    const p = installPrompt;
+    installPrompt = null;
+    p.prompt();
+    try { const c = await p.userChoice; if (c && c.outcome === 'accepted') toast('홈 화면에 추가했어요. 앱에서 한 번 로그인하세요.'); } catch (e) {}
+    render();
+    return;
+  }
+  const share = '<svg class="inline-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
+  const steps = IS_IOS
+    ? [`사파리 아래쪽(또는 위쪽) <b>공유 버튼</b> ${share} 을 눌러요.`, '목록을 위로 올려 <b>홈 화면에 추가</b>를 눌러요.', '오른쪽 위 <b>추가</b>를 누르면 홈 화면에 아이콘이 생겨요.']
+    : IS_ANDROID
+      ? ['브라우저 오른쪽 위(또는 아래) <b>메뉴(⋮ 또는 ≡)</b>를 눌러요.', '<b>홈 화면에 추가</b> 또는 <b>앱 설치</b>를 눌러요.', '<b>추가</b>(설치)를 누르면 홈 화면에 아이콘이 생겨요.']
+      : ['휴대폰 브라우저로 이 사이트를 연 뒤, 메뉴에서 <b>홈 화면에 추가</b>를 고르세요.'];
+  openModal(`<header><h3>홈 화면에 추가하기</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content"><ol class="a2hs-steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>
+      <div class="infobox" style="margin:12px 0 0">홈 화면 아이콘으로 열면 앱처럼 화면이 넓어지고 아래에 메뉴가 생겨요.<br>
+        <b>처음 한 번은 앱에서 로그인</b>해 주세요. 이때 <b>이 기기에서 로그인 유지</b>를 켜 두면 다음부터는 바로 열려요.</div></div>`);
+}
+
+/** 하단 탭바 '더보기' — 나머지 탭(PM: 전체 일정 · 팀원 관리 · 공휴일 · 변경 이력) */
+function openNavMore() {
+  const main = ['cal', 'events', 'work', 'mine'];
+  const tabs = [['all', canSeeAll() ? '전체 일정' : `${S.me.part} 파트 일정`], ['members', '팀원 관리'], ['holidays', '공휴일'], ['history', '변경 이력']]
+    .filter(([k]) => !main.includes(k) && (k === 'all' ? canSeeTeam() : isAdmin()));
+  openModal(`<header><h3>더보기</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content"><div class="more-list">${tabs.map(([k, t]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}<span>›</span></button>`).join('')}</div></div>`);
 }
 
 function previewBar() {
@@ -1282,7 +1379,7 @@ function viewCalendar() {
       ${allUp.length > upMax ? `<div class="evt-row more" data-act="tab" data-v="events">중요 일정 ${allUp.length - upMax}건 더 보기 ›</div>` : ''}
     </div>` : '';
 
-  return upcomingHtml + statsHtml + `
+  return a2hsBanner() + upcomingHtml + statsHtml + `
     <div class="cal-toolbar">
       <div class="month-nav">
         <button class="icon-btn" data-act="month" data-v="-1" aria-label="이전 달">‹</button>
@@ -2220,7 +2317,8 @@ function openAccount() {
   if (!subs.length) subs.push('');
   const m = openModal(`<header><h3>${esc(S.me.name)} <span class="muted small">${esc(S.me.email)}</span></h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
-      <button class="btn" data-act="guide" style="width:100%;margin-bottom:12px">사용 안내 · 업데이트 내역</button>
+      <button class="btn" data-act="guide" style="width:100%;margin-bottom:${IS_STANDALONE ? 12 : 8}px">사용 안내 · 업데이트 내역</button>
+      ${IS_STANDALONE ? '' : '<button class="btn" data-act="a2hs" style="width:100%;margin-bottom:12px">홈 화면에 추가하기 (앱처럼 쓰기)</button>'}
       <div class="field" style="margin-top:0"><label>화면 모드 <span class="muted" style="font-weight:400">이 기기에만 적용</span></label>
         <div class="seg">${[['', '시스템 설정 따름'], ['light', '밝게'], ['dark', '어둡게']].map(([v, t]) => `<button type="button" data-act="setTheme" data-v="${v}" class="${themePref() === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>
       ${urlToken ? `<div class="infobox" style="margin:0 0 8px">이 기기에서 <b>로그인 유지 중</b>입니다. 지금 주소창 주소에 로그인 정보가 들어 있으니 <b>다른 사람에게 보내지 마세요.</b>
@@ -2287,13 +2385,14 @@ const GUIDE = [
   ] },
   { t: '편하게 쓰기', items: [
     { x: '로그인할 때 [이 기기에서 로그인 유지]를 켜면 180일 동안 다시 로그인하지 않아도 돼요.' },
-    { x: '휴대폰 홈 화면에 추가하면 앱처럼 쓸 수 있어요. 아이폰은 Safari 공유 버튼, 안드로이드는 Chrome 메뉴에서 [홈 화면에 추가].' },
+    { x: '휴대폰 홈 화면에 추가하면 앱처럼 쓸 수 있어요 (아래 메뉴가 생기고 화면이 넓어져요). 이름 메뉴의 [홈 화면에 추가하기]에서 방법을 볼 수 있어요. 처음 한 번은 앱에서 로그인하세요.' },
     { x: '화면은 10분마다 자동으로 최신 내용을 불러와요. 바로 보고 싶으면 오른쪽 위 ↻ 를 누르거나, 홈 화면 앱에서는 맨 위에서 아래로 당기세요.' },
     { x: '이름 메뉴에서 화면 모드(시스템 설정 따름 · 밝게 · 어둡게)를 고를 수 있어요.' },
   ] },
 ];
 const UPDATES = [
   { d: '2026-10-15', items: [
+    { x: '휴대폰 홈 화면에 추가해서 쓰면 화면 아래에 메뉴(캘린더 · 중요 · 업무 · 내 일정 · 더보기)가 생겨요. 이름 메뉴의 [홈 화면에 추가하기]에서 방법을 볼 수 있어요.' },
     { x: '중요 일정에 담당자가 생겼어요. 담당자로 지정되면 새 소식으로 알려주고, 다가오는 중요 일정에 [내 담당]으로 표시돼요.' },
     { r: 'pm', x: '[공휴일] 탭에서 공휴일 이름을 [수정]할 수 있어요.' },
     { x: "이름이 '슈퍼SOL 전담반 일정'으로 바뀌었어요." },
@@ -2963,7 +3062,11 @@ document.addEventListener('click', (e) => {
   if (!t || t.tagName === 'SELECT' || t.tagName === 'INPUT') return;
   const v = t.dataset.v;
   switch (t.dataset.act) {
+    case 'navMore': openNavMore(); break;
+    case 'a2hs': addToHome(); break;
+    case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
     case 'tab':
+      closeModal(); // 하단 탭바 '더보기' 창에서 고른 경우
       if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
       else ui.tab = v;
       if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
@@ -3145,8 +3248,7 @@ const REFRESH_ON_RETURN = 5 * 60000; // 앱으로 돌아왔을 때 마지막 갱
  * 맨 위에서 70px 넘게 당겼다 놓으면 ↻ 버튼과 같은 동작
  */
 (function pullToRefresh() {
-  const standalone = typeof window !== 'undefined' && ((window.navigator && window.navigator.standalone) || window.matchMedia('(display-mode: standalone)').matches);
-  if (!standalone || typeof document === 'undefined' || !document.body) return;
+  if (!IS_STANDALONE || typeof document === 'undefined' || !document.body) return;
   const bar = document.createElement('div');
   bar.className = 'ptr';
   document.body.appendChild(bar);
