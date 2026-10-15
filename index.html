@@ -885,12 +885,15 @@ const Mock = (() => {
       need((e.title || '').trim(), '제목을 입력하세요.');
       need(e.startDate && (e.endDate || e.startDate) >= e.startDate, '날짜를 확인하세요.');
       const row = { id: e.id || 'E' + Date.now(), title: e.title.trim(), startDate: e.startDate, endDate: e.endDate || e.startDate, time: e.time || '', memo: e.memo || '',
+        assignees: (e.assignees || ((db.events || []).find((x) => x.id === e.id) || {}).assignees || []).slice(0, 30),
         createdAt: ((db.events || []).find((x) => x.id === e.id) || {}).createdAt || new Date().toISOString() };
       const old = (db.events || []).find((x) => x.id === row.id);
       db.events = (db.events || []).filter((x) => x.id !== row.id).concat([row]);
       const desc = (x) => `${x.title} ${fmtRange(x)}${x.time ? ' ' + x.time : ''}`;
       log(a, 'event', old ? '수정' : '등록', '', old && desc(old) !== desc(row) ? `${desc(old)} → ${desc(row)}` : desc(row));
-      if (row.endDate >= todayStr() && (!old || desc(old) !== desc(row))) push(a, db.users.map((x) => x.email), `${old ? '중요 일정 변경' : '새 중요 일정'}: ${desc(row)}`, 'day:' + row.startDate);
+      const added = row.assignees.filter((x) => !(old && (old.assignees || []).includes(x)));
+      if (row.endDate >= todayStr()) push(a, added, `중요 일정 담당으로 지정됐어요: ${desc(row)}`, 'day:' + row.startDate);
+      if (row.endDate >= todayStr() && (!old || desc(old) !== desc(row))) push(a, db.users.map((x) => x.email).filter((x) => !added.includes(x)), `${old ? '중요 일정 변경' : '새 중요 일정'}: ${desc(row)}`, 'day:' + row.startDate);
       return result(a);
     },
     deleteEvent(token, id) {
@@ -1273,7 +1276,7 @@ function viewCalendar() {
   const upcomingHtml = allUp.length ? `
     <div class="card evt-compact">${allUp.slice(0, upMax).map((e) => `
       <div class="evt-row" data-act="day" data-v="${e.startDate < today ? today : e.startDate}" title="${esc(e.title)}${e.memo ? ' — ' + esc(e.memo) : ''}">
-        <span class="when">★ ${esc(evtWhen(e))}</span><span class="what">${esc(e.title)}</span></div>`).join('')}
+        <span class="when">★ ${esc(evtWhen(e))}</span><span class="what">${esc(e.title)}</span>${(e.assignees || []).includes(S.me.email) ? '<span class="badge admin" style="flex:none">내 담당</span>' : ''}</div>`).join('')}
       ${allUp.length > upMax ? `<div class="evt-row more" data-act="tab" data-v="events">중요 일정 ${allUp.length - upMax}건 더 보기 ›</div>` : ''}
     </div>` : '';
 
@@ -1567,14 +1570,14 @@ function openWorkDay(ds) {
 }
 
 /** 담당자 선택 (칩 + 추가 목록, 본인 포함 가능) */
-function renderAssignees(box, list, part, onChange) {
+function renderAssignees(box, list, part, onChange, max = MAX_ASSIGNEES) {
   const groups = {};
   S.users.filter((u) => !list.includes(u.email)).forEach((u) => (groups[u.part || 'PM'] = groups[u.part || 'PM'] || []).push(u));
   const order = [part, ...PARTS, 'PM'].filter((g, k, a) => g && a.indexOf(g) === k && groups[g]);
   box.innerHTML = list.map((e, i) => `<span class="name-chip">${esc(nameOf(e))}<button type="button" data-adel="${i}" aria-label="${esc(nameOf(e))} 빼기">✕</button></span>`).join('')
-    + (list.length < MAX_ASSIGNEES ? `<select data-aadd><option value="">+ 담당자 추가</option>${order.map((g) =>
+    + (list.length < max ? `<select data-aadd><option value="">+ 담당자 추가</option>${order.map((g) =>
       `<optgroup label="${esc(g)}">${groups[g].sort((a, b) => a.name.localeCompare(b.name)).map((u) => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('')}</optgroup>`).join('')}</select>` : '');
-  const again = () => { renderAssignees(box, list, part, onChange); if (onChange) onChange(); };
+  const again = () => { renderAssignees(box, list, part, onChange, max); if (onChange) onChange(); };
   box.querySelectorAll('[data-adel]').forEach((b) => (b.onclick = () => { list.splice(+b.dataset.adel, 1); again(); }));
   const sel = box.querySelector('[data-aadd]');
   if (sel) sel.onchange = () => { if (sel.value) list.push(sel.value); again(); };
@@ -1665,7 +1668,7 @@ async function removeTask(id) {
 function evtItem(e) {
   return `<div class="card evt-item ${e.endDate < todayStr() ? 'past' : ''}" style="${e.endDate < todayStr() ? 'opacity:.6' : ''}">
     <div class="when">★ ${esc(evtWhen(e))}</div>
-    <div class="what"><b>${esc(e.title)}</b>${e.memo ? `<div class="muted small" style="white-space:pre-wrap">${esc(e.memo)}</div>` : ''}</div>
+    <div class="what"><b>${esc(e.title)}</b>${(e.assignees || []).length ? `<div class="small">담당 ${e.assignees.map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ')}</div>` : ''}${e.memo ? `<div class="muted small" style="white-space:pre-wrap">${esc(e.memo)}</div>` : ''}</div>
     ${isAdmin() ? `<div class="actions" style="display:flex;gap:6px"><button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
       <button class="btn sm danger" data-act="delEvent" data-v="${e.id}">삭제</button></div>` : ''}</div>`;
 }
@@ -1695,6 +1698,7 @@ function openEventForm(id, date) {
         <div class="field"><label>종료일</label><input type="date" name="endDate" value="${ex ? ex.endDate : d0}"></div>
       </div>
       <div class="field"><label>시간 <span class="muted" style="font-weight:400">선택</span></label><input name="time" maxlength="30" value="${ex ? esc(ex.time) : ''}" placeholder="예: 14:00~16:00"></div>
+      <div class="field"><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 30명 · 담당자에게 따로 알림</span></label><div class="assignee-box" data-assignees></div></div>
       <div class="field"><label>내용 <span class="muted" style="font-weight:400">선택</span></label><textarea name="memo" rows="3" maxlength="300" placeholder="장소, 참석 대상 등">${ex ? esc(ex.memo) : ''}</textarea></div>
       <p class="muted small">등록하면 모든 직원의 캘린더에 ★로 표시됩니다.</p>
     </div>
@@ -1704,8 +1708,10 @@ function openEventForm(id, date) {
   const sd = m.querySelector('[name=startDate]'), ed = m.querySelector('[name=endDate]');
   sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; };
   if (ex) m.querySelector('[data-del]').onclick = () => removeEvent(ex.id);
+  const assignees = ex && ex.assignees ? ex.assignees.slice() : [];
+  renderAssignees(m.querySelector('[data-assignees]'), assignees, '', null, 30);
   m.querySelector('[data-save]').onclick = () => run(api('saveEvent', {
-    id: ex ? ex.id : '', title: v('title'), startDate: v('startDate'), endDate: v('endDate') || v('startDate'), time: v('time'), memo: v('memo'),
+    id: ex ? ex.id : '', title: v('title'), startDate: v('startDate'), endDate: v('endDate') || v('startDate'), time: v('time'), memo: v('memo'), assignees,
   }), ex ? '수정했습니다.' : '중요 일정을 등록했습니다.');
 }
 
@@ -2284,6 +2290,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-15', items: [
+    { x: '중요 일정에 담당자가 생겼어요. 담당자로 지정되면 새 소식으로 알려주고, 다가오는 중요 일정에 [내 담당]으로 표시돼요.' },
     { r: 'pm', x: '[공휴일] 탭에서 공휴일 이름을 [수정]할 수 있어요.' },
     { x: "이름이 '슈퍼SOL 전담반 일정'으로 바뀌었어요." },
     { x: '휴대폰에서 캘린더를 좌우로 밀면 이전 · 다음 달로 넘어가요 (업무 일정 캘린더도).' },
