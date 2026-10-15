@@ -116,6 +116,11 @@
   .cal-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
   .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); user-select: none; }
   .cal { overflow: hidden; }
+  .cal { position: relative; }
+  .month-pill { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); background: rgba(17, 24, 39, .78); color: #fff; font-weight: 700; font-size: 15px;
+    padding: 8px 16px; border-radius: 999px; pointer-events: none; animation: pillfade 1s ease-out forwards; }
+  @keyframes pillfade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+  .cal-grid { touch-action: pan-y; } /* 가로 밀기는 앱이 처리 (달 넘기기), 세로는 그대로 스크롤 */
   .cal-head, .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .cal-head div { padding: 8px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; border-bottom: 1px solid var(--border); }
   .cal-head div:first-child { color: var(--sun); }
@@ -3063,27 +3068,65 @@ let refreshing = false;
 const REFRESH_EVERY = 10 * 60000; // 화면에 떠 있는 동안 10분마다
 const REFRESH_ON_RETURN = 5 * 60000; // 앱으로 돌아왔을 때 마지막 갱신 후 5분이 지났으면 새로고침
 
-/* 캘린더를 좌우로 밀면 이전/다음 달 (휴가 캘린더 · 업무 캘린더) */
+/*
+ * 캘린더를 좌우로 넘기기 (휴가 캘린더 · 업무 캘린더)
+ * 미는 동안 날짜 칸이 손가락을 따라 움직이고, 충분히 밀었다 놓으면 밀려 나가고 다음(이전) 달이 반대쪽에서 들어온다.
+ * 조금만 밀었다 놓으면 제자리로. 세로로 움직이기 시작하면 스크롤로 보고 건드리지 않는다 (.cal-grid는 touch-action: pan-y)
+ */
 (function swipeMonths() {
   if (typeof window === 'undefined') return;
-  let x0 = null, y0 = 0;
+  const EASE = 'cubic-bezier(.2,.8,.2,1)';
+  let st = null;
+  const set = (g, x, fade, ms) => {
+    g.style.transition = ms ? `transform ${ms}ms ${EASE}, opacity ${ms}ms ${EASE}` : 'none';
+    g.style.transform = x ? `translateX(${x}px)` : '';
+    g.style.opacity = fade ? String(1 - fade) : '';
+  };
   window.addEventListener('touchstart', (e) => {
     const grid = e.target && e.target.closest && e.target.closest('.cal-grid');
-    x0 = grid && e.touches.length === 1 ? e.touches[0].clientX : null;
-    y0 = x0 === null ? 0 : e.touches[0].clientY;
+    st = grid && e.touches.length === 1 && (ui.tab === 'cal' || ui.tab === 'work')
+      ? { grid, x0: e.touches[0].clientX, y0: e.touches[0].clientY, t0: Date.now(), dx: 0, mode: '', w: grid.offsetWidth || 1 } : null;
   }, { passive: true });
-  window.addEventListener('touchend', (e) => {
-    if (x0 === null) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - x0, dy = t.clientY - y0;
-    x0 = null;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // 세로 스크롤·짧은 터치는 무시
+  window.addEventListener('touchmove', (e) => {
+    if (!st) return;
+    const dx = e.touches[0].clientX - st.x0, dy = e.touches[0].clientY - st.y0;
+    if (!st.mode && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) st.mode = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+    if (st.mode !== 'h') return;
+    st.dx = dx;
+    set(st.grid, dx, Math.min(Math.abs(dx) / st.w, 1) * 0.4, 0);
+  }, { passive: true });
+  const end = () => {
+    if (!st) return;
+    const { grid, dx, w, t0, mode } = st;
+    st = null;
+    if (mode !== 'h') return;
+    const fast = Math.abs(dx) > 40 && Date.now() - t0 < 250; // 빠르게 튕겨도 넘김
+    if (Math.abs(dx) < w * 0.25 && !fast) { set(grid, 0, 0, 200); return; } // 제자리로
     const step = dx < 0 ? 1 : -1; // 왼쪽으로 밀면 다음 달
-    if (ui.tab === 'work') ui.workMonth = new Date(ui.workMonth.getFullYear(), ui.workMonth.getMonth() + step, 1);
-    else if (ui.tab === 'cal') ui.month = new Date(ui.month.getFullYear(), ui.month.getMonth() + step, 1);
-    else return;
-    render();
-  }, { passive: true });
+    set(grid, -step * w, 1, 160);
+    setTimeout(() => {
+      if (ui.tab === 'work') ui.workMonth = new Date(ui.workMonth.getFullYear(), ui.workMonth.getMonth() + step, 1);
+      else ui.month = new Date(ui.month.getFullYear(), ui.month.getMonth() + step, 1);
+      render();
+      const g = document.querySelector('.cal-grid');
+      if (!g) return;
+      set(g, step * w * 0.6, 1, 0); // 반대쪽에서 들어오기
+      void g.offsetWidth;
+      set(g, 0, 0, 220);
+      // 달 제목이 화면 밖에 있을 수 있어 넘긴 달을 칸 위에 잠깐 표시
+      const m = ui.tab === 'work' ? ui.workMonth : ui.month;
+      const card = g.closest('.cal');
+      if (card) {
+        const pill = document.createElement('div');
+        pill.className = 'month-pill';
+        pill.textContent = `${m.getFullYear()}년 ${m.getMonth() + 1}월`;
+        card.appendChild(pill);
+        setTimeout(() => pill.remove(), 1000);
+      }
+    }, 160);
+  };
+  window.addEventListener('touchend', end, { passive: true });
+  window.addEventListener('touchcancel', () => { if (st) { set(st.grid, 0, 0, 200); st = null; } }, { passive: true });
 })();
 
 /*
