@@ -237,6 +237,11 @@
   .evt-row .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; flex: none; }
   .evt-row .what { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .evt-row.more { color: var(--muted); font-size: 13px; border-left-color: transparent; }
+  .evt-row .who { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+  @media (max-width: 640px) {
+    .evt-row { flex-wrap: wrap; row-gap: 1px; }
+    .evt-row .who { flex-basis: 100%; padding-left: 1.2em; } /* 휴대폰: 담당자는 아래 작은 한 줄 */
+  }
   .evt-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-left: 3px solid var(--evt); }
   .evt-item .when { color: var(--evt); font-weight: 700; font-size: 13px; white-space: nowrap; flex: none; line-height: 1.5; min-width: 98px; }
   .evt-item .when .sub { font-weight: 600; padding-left: 1.15em; } /* ★ 아래로 줄 맞춤 */
@@ -1388,12 +1393,18 @@ function viewCalendar() {
   }
 
   // 다가오는 중요 일정: 한 줄씩 (누르면 그 날짜 상세 — 내용은 상세에서). 휴대폰은 2개, PC는 3개까지
+  // 담당자: 3명까지 이름, 나머지는 '외 N명' (내 이름은 굵게)
+  const whoLine = (list) => {
+    if (!(list || []).length) return '';
+    const shown = list.slice(0, 3).map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ');
+    return `<span class="who">담당 ${shown}${list.length > 3 ? ` 외 ${list.length - 3}명` : ''}</span>`;
+  };
   const allUp = (S.events || []).filter((e) => e.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate));
   const upMax = window.matchMedia('(max-width: 640px)').matches ? 2 : 3;
   const upcomingHtml = allUp.length ? `
     <div class="card evt-compact">${allUp.slice(0, upMax).map((e) => `
       <div class="evt-row" data-act="day" data-v="${e.startDate < today ? today : e.startDate}" title="${esc(e.title)}${e.memo ? ' — ' + esc(e.memo) : ''}">
-        <span class="when">★ ${esc(evtWhen(e))}</span><span class="what">${esc(e.title)}</span>${(e.assignees || []).includes(S.me.email) ? '<span class="badge admin" style="flex:none">내 담당</span>' : ''}</div>`).join('')}
+        <span class="when">★ ${esc(evtWhen(e))}</span><span class="what">${esc(e.title)}</span>${(e.assignees || []).includes(S.me.email) ? '<span class="badge admin" style="flex:none">내 담당</span>' : ''}${whoLine(e.assignees)}</div>`).join('')}
       ${allUp.length > upMax ? `<div class="evt-row more" data-act="tab" data-v="events">중요 일정 ${allUp.length - upMax}건 더 보기 ›</div>` : ''}
     </div>` : '';
 
