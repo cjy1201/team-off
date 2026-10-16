@@ -282,7 +282,8 @@
   /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 기타) */
   .k-0 { background: #4f46e5; } .k-1 { background: #dc2626; } .k-2 { background: #d97706; }
   .k-3 { background: #0d9488; } .k-4 { background: #db2777; } .k-5 { background: #64748b; }
-  .chip .pt { flex: none; opacity: .85; font-weight: 600; }
+  .chip .pt { flex: none; font-size: 9.5px; font-weight: 700; line-height: 13px; padding: 0 4px; border-radius: 3px; background: rgba(255,255,255,.28); } /* 파트 = 작은 태그, 제목과 구분 */
+  .chip.done .pt { text-decoration: none; }
   .chip.done { opacity: .45; text-decoration: line-through; }
   .chips-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .chips-row button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
