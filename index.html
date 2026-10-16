@@ -282,7 +282,7 @@
   .whoami.btn { padding: 4px 8px; font-weight: 500; }
   /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 기타) */
   .k-0 { background: #4f46e5; } .k-1 { background: #dc2626; } .k-2 { background: #d97706; }
-  .k-3 { background: #0d9488; } .k-4 { background: #db2777; } .k-5 { background: #64748b; }
+  .k-3 { background: #0d9488; } .k-4 { background: #db2777; } .k-5 { background: #0284c7; } .k-6 { background: #64748b; }
   .chip .pt { flex: none; font-size: 9.5px; font-weight: 700; line-height: 13px; padding: 0 4px; border-radius: 3px; background: rgba(255,255,255,.28); } /* 파트 = 작은 태그, 제목과 구분 */
   .chip.done .pt { text-decoration: none; }
   .chip.done { opacity: .45; text-decoration: line-through; }
@@ -996,6 +996,12 @@ const Mock = (() => {
       if (!!u.ds !== !!on) { u.ds = !!on; log(a, 'user', on ? 'DS직원 지정' : 'DS직원 해제', email, u.name); }
       return result(a);
     },
+    setViewAll(token, email, on) {
+      const a = admin(token); const u = db.users.find((x) => x.email === email); need(u, '팀원을 찾을 수 없습니다.');
+      need(u.role === 'member', 'PM·PL은 원래 전체 일정을 볼 수 있습니다.');
+      if (!!u.viewAll !== !!on) { u.viewAll = !!on; log(a, 'user', on ? '전체 조회 지정' : '전체 조회 해제', email, u.name); }
+      return result(a);
+    },
     bulkAddLeaves(token, rows) {
       const a = admin(token); need(rows && rows.length, '등록할 휴가가 없습니다.');
       let created = 0; const errors = [];
@@ -1058,8 +1064,8 @@ const isAdmin = () => S && S.me.role === 'pm';
 const isPL = () => S && S.me.role === 'pl';
 const canSeeAll = () => isAdmin() || isPL() || !!(S && S.me.viewAll); // 전체 일정 조회 (PM·PL·'전체 일정 조회' 옵션)
 const canSeeTeam = () => canSeeAll() || !!(S && S.me.part); // 다른 사람 일정도 받는 권한 (파트원은 같은 파트)
-const roleLabel = (u) => (u.role === 'pm' ? 'PM' : u.role === 'pl' ? `${u.part} PL` : `${u.part || ''} 파트원`.trim())
-  + (u.viewAll && u.role === 'member' ? ' · 전체조회' : '');
+const roleLabel = (u, noViewAll) => (u.role === 'pm' ? 'PM' : u.role === 'pl' ? `${u.part} PL` : `${u.part || ''} 파트원`.trim())
+  + (u.viewAll && u.role === 'member' && !noViewAll ? ' · 전체조회' : ''); // 팀원 관리 목록은 체크로 보여서 생략
 const nameOf = (email) => { const u = S.users.find((x) => x.email === email); return u ? u.name : email; };
 const partOf = (email) => (S.users.find((x) => x.email === email) || {}).part || '';
 /** 전체 조회 권한자가 파트 필터를 고르면 그 파트 일정만 */
@@ -1499,7 +1505,7 @@ function leaveItem(l, opts = {}) {
    업무 일정 — 파트별 업무 공유 (휴가 일정과 데이터·화면 모두 별도)
    탭을 열 때만 서버에서 불러온다 (getTasks)
    ========================================================= */
-const TASK_CATS = ['개발', '배포', '테스트', '회의/리뷰', '마감', '기타'];
+const TASK_CATS = ['개발', '배포', '테스트', '회의/리뷰', '마감', '인프라', '기타'];
 const TASK_STATUS = ['예정', '진행 중', '완료', '지연'];
 const MAX_ASSIGNEES = 10;
 const W = { loaded: false, loading: false, error: '', tasks: [] };
@@ -2325,9 +2331,10 @@ function viewMembers() {
     .filter(([, list]) => list.length);
   const row = (u) => `
       <div class="card item"><div class="body">
-        <div class="title">${esc(u.name)} <span class="badge ${u.role !== 'member' ? 'admin' : ''}">${esc(roleLabel(u))}</span>${u.email === S.me.email ? '<span class="muted small">(나)</span>' : ''}</div>
+        <div class="title">${esc(u.name)} <span class="badge ${u.role !== 'member' ? 'admin' : ''}">${esc(roleLabel(u, true))}</span>${u.email === S.me.email ? '<span class="muted small">(나)</span>' : ''}</div>
         <div class="meta">${esc(u.email)}${u.defaultSubs && u.defaultSubs.length ? ` · 기본 대직자 ${u.defaultSubs.map((e) => esc(nameOf(e))).join(', ')}` : ''}</div></div>
         <div class="actions"><label class="toggle ds-toggle" title="DS직원 (상단 식권 승인 버튼 사용)"><input type="checkbox" data-act="dsToggle" data-v="${esc(u.email)}" ${u.ds ? 'checked' : ''}> DS직원</label>
+        ${u.role === 'member' ? `<label class="toggle ds-toggle" title="전체 일정 조회 (파트원도 전체 일정 · 휴가 사용 현황을 볼 수 있음)"><input type="checkbox" data-act="viewAllToggle" data-v="${esc(u.email)}" ${u.viewAll ? 'checked' : ''}> 전체조회</label>` : ''}
         <button class="btn sm" data-act="editUser" data-v="${esc(u.email)}">수정</button>
         ${u.email !== S.me.email ? `<button class="btn sm" data-act="resetPw" data-v="${esc(u.email)}">비밀번호 초기화</button>
           <button class="btn sm danger" data-act="delUser" data-v="${esc(u.email)}">삭제</button>` : ''}</div>
@@ -2558,6 +2565,8 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-16', items: [
+    { x: "업무 분류에 '인프라'(하늘색)가 생겼어요." },
+    { r: 'pm', x: "팀원 관리 목록에서 파트원의 '전체조회'를 바로 켜고 끌 수 있어요 (DS직원 체크 옆)." },
     { x: 'PC 업무 일정 캘린더에서 업무 칩을 다른 날짜로 끌어 놓으면 일정이 옮겨져요 (기간은 그대로, 수정 권한이 있는 일정만). 옮긴 뒤 [되돌리기]로 원래대로 돌릴 수 있어요.' },
     { r: 'pm', x: "업무 등록 때 파트를 '전체 파트 (공통)'로 고를 수 있어요. 파트를 골라 봐도 공통 업무는 함께 보여요. 수정할 때도 파트를 바꿀 수 있어요." },
     { x: '업무 일정 캘린더에도 중요 일정(★)이 보여요.' },
@@ -3464,6 +3473,11 @@ document.addEventListener('change', (e) => {
     case 'dsToggle': {
       const u = S.users.find((x) => x.email === t.dataset.v);
       run(api('setDsStaff', t.dataset.v, t.checked), `${u ? u.name + '님을 ' : ''}DS직원${t.checked ? '으로 지정' : '에서 해제'}했습니다.`);
+      break;
+    }
+    case 'viewAllToggle': {
+      const u = S.users.find((x) => x.email === t.dataset.v);
+      run(api('setViewAll', t.dataset.v, t.checked), `${u ? u.name + '님의 ' : ''}전체 조회를 ${t.checked ? '켰' : '껐'}습니다.`);
       break;
     }
     case 'psearch': pickBySearch(t.value, false); break; // 입력 후 엔터 · 목록 선택
