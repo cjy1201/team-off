@@ -891,15 +891,29 @@ const Mock = (() => {
       need((i.title || '').trim(), '제목을 입력하세요.');
       need(i.startDate && (i.endDate || i.startDate) >= i.startDate, '날짜를 확인하세요.');
       const row = { id: ex ? ex.id : 'T' + Date.now(), part, title: i.title.trim(), category: i.category, startDate: i.startDate, endDate: i.endDate || i.startDate,
-        time: i.time || '', assignees: vis === 'private' ? [ex ? ex.createdBy : u.email] : (i.assignees || []).slice(0, 10), status: i.status || '예정', visibility: vis, memo: i.memo || '', createdBy: ex ? ex.createdBy : u.email };
+        time: i.time || '', assignees: vis === 'private' ? [ex ? ex.createdBy : u.email] : (i.assignees || []).slice(0, 10), status: i.status || '예정', visibility: vis, memo: i.memo || '', createdBy: ex ? ex.createdBy : u.email,
+        series: ex ? ex.series || '' : '' };
+      if (!ex && i.repeat && i.repeat.freq) { // 반복: 날짜마다 한 건
+        const hol = {}; db.holidays.forEach((h) => (hol[h.date] = true));
+        const series = 'S' + Date.now();
+        const rows = repeatDates(row.startDate, row.endDate, i.repeat, hol).map(([s1, e1], k) => ({ ...row, id: 'T' + Date.now() + '_' + k, startDate: s1, endDate: e1, series }));
+        db.tasks = db.tasks.concat(rows);
+        log(u, 'task', '반복 등록', '', `[${part}] ${row.title} · ${rows.length}회`);
+        persist(); return this.getTasks(token);
+      }
       db.tasks = db.tasks.filter((t) => t.id !== row.id).concat([row]);
       log(u, 'task', ex ? '수정' : '등록', '', vis === 'private' ? `[${part}] (나만 보기 업무)` : `[${part}] ${row.title} ${fmtRange(row)}`);
       taskNews(u, ex, row); persist();
       return this.getTasks(token);
     },
-    deleteTask(token, id) {
+    deleteTask(token, id, scope) {
       const u = auth(token);
       const t = (db.tasks || []).find((x) => x.id === id);
+      if (t && scope === 'after' && t.series) {
+        const n = db.tasks.filter((x) => x.series === t.series && x.startDate >= t.startDate).length;
+        db.tasks = db.tasks.filter((x) => !(x.series === t.series && x.startDate >= t.startDate));
+        log(u, 'task', '반복 삭제', '', `${t.title} 부터 ${n}건`); persist(); return this.getTasks(token);
+      }
       need(t, '이미 삭제된 업무 일정입니다.');
       need(t.visibility === 'private' ? t.createdBy === u.email : u.role === 'pm' || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part), '작성자, 해당 파트 PL, PM만 삭제할 수 있습니다.');
       db.tasks = db.tasks.filter((x) => x.id !== id);
@@ -1511,7 +1525,7 @@ function taskItem(t) {
   return `<div class="card item ${t.status === '완료' ? 'past' : ''}">
     <div class="bar k-${catIdx(t.category)}"></div>
     <div class="body">
-      <div class="title"><span class="badge">${esc(t.part)}</span> ${esc(t.title)}
+      <div class="title"><span class="badge">${esc(t.part)}</span> ${esc(t.title)}${t.series ? ' <span class="muted small" title="반복 일정">↻</span>' : ''}
         <span class="muted small" style="font-weight:500">${fmtRange(t)}${t.time ? ' ' + esc(t.time) : ''}</span>
         ${late ? '<span class="badge overdue">기한 지남</span>' : t.status === '지연' ? '<span class="badge overdue">지연</span>' : ''}</div>
       <div class="meta">${esc(t.category)}${t.canEdit ? '' : ' · ' + esc(t.status)}${names ? ' · 담당 ' + names : ''}${t.visibility === 'part' ? ' · 파트 내부' : t.visibility === 'ds' ? ' · <b>DS직원만</b>' : t.visibility === 'private' ? ' · <b>나만 보기</b>' : ''}</div>
@@ -1719,6 +1733,14 @@ function openTaskForm(id, date) {
         ${isAdmin() || S.me.ds || f.visibility === 'ds' ? `<button type="button" data-vis="ds" class="${f.visibility === 'ds' ? 'on' : ''}">DS직원만</button>` : ''}
         ${mine ? `<button type="button" data-vis="private" class="${f.visibility === 'private' ? 'on' : ''}">나만 보기</button>` : ''}</div>
         <div class="muted small" data-vishelp style="margin-top:4px"></div></div>
+      ${ex ? (ex.series ? '<div class="infobox" style="margin:0 0 8px">↻ 반복 일정이에요. 여기서 고치면 <b>이 날짜 일정만</b> 바뀌어요.</div>' : '') : `<div class="field"><label>반복 <span class="muted" style="font-weight:400">선택</span></label>
+        <select name="repFreq"><option value="">반복 안 함</option><option value="weekday">매일 (평일)</option><option value="weekly">매주</option><option value="biweekly">격주</option><option value="monthly">매월 (같은 날짜)</option></select>
+        <div data-repopts style="display:none;margin-top:8px">
+          <div class="seg" data-repdays>${['일', '월', '화', '수', '목', '금', '토'].map((w, i) => `<button type="button" data-rd="${i}">${w}</button>`).join('')}</div>
+          <div class="field" style="margin:8px 0 0"><label>반복 종료일</label><input type="date" name="repUntil"></div>
+          <label class="toggle" style="margin-top:8px"><input type="checkbox" name="repSkip" checked> 공휴일 건너뛰기</label>
+          <div class="muted small" data-repinfo style="margin-top:6px"></div>
+        </div></div>`}
       <div class="field" data-afield><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div><div data-absent></div></div>
       <div class="field"><label>메모</label><textarea name="memo" rows="3" maxlength="300" placeholder="링크, 참고사항">${esc(f.memo)}</textarea></div>
     </div>
@@ -1755,18 +1777,82 @@ function openTaskForm(id, date) {
   sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; checkAbsent(); };
   ed.onchange = checkAbsent;
   if (ex) q('[data-del]').onclick = () => removeTask(ex.id);
+  // 반복 (새 일정만): 방식 · 요일 · 종료일 · 공휴일 건너뛰기 → 몇 회 만들어지는지 미리 보여줌
+  const rep = { freq: '', days: [], until: '', skipHolidays: true };
+  const repInfo = () => {
+    if (!rep.freq) return;
+    rep.until = q('[name=repUntil]').value; rep.skipHolidays = q('[name=repSkip]').checked;
+    let txt;
+    try { const ds = repeatDates(sd.value, ed.value || sd.value, rep); txt = `총 <b>${ds.length}회</b> 등록돼요 (${fmtShort(ds[0][0])} ~ ${fmtShort(ds[ds.length - 1][0])})`; } catch (e) { txt = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
+    q('[data-repinfo]').innerHTML = txt;
+  };
+  if (q('[name=repFreq]')) {
+    const paintDays = () => m.querySelectorAll('[data-rd]').forEach((b) => b.classList.toggle('on', rep.days.includes(+b.dataset.rd)));
+    q('[name=repFreq]').onchange = (e) => {
+      rep.freq = e.target.value;
+      q('[data-repopts]').style.display = rep.freq ? '' : 'none';
+      q('[data-repdays]').style.display = rep.freq === 'weekly' || rep.freq === 'biweekly' ? '' : 'none';
+      if (!rep.days.length) rep.days = [parse(sd.value).getDay()];
+      if (!q('[name=repUntil]').value) q('[name=repUntil]').value = ymd(addDays(parse(sd.value), 90)); // 기본 3개월
+      paintDays(); repInfo();
+    };
+    m.querySelectorAll('[data-rd]').forEach((b) => (b.onclick = () => {
+      const d = +b.dataset.rd;
+      rep.days = rep.days.includes(d) ? rep.days.filter((x) => x !== d) : rep.days.concat([d]);
+      paintDays(); repInfo();
+    }));
+    q('[name=repUntil]').onchange = repInfo; q('[name=repSkip]').onchange = repInfo;
+    sd.addEventListener('change', repInfo); ed.addEventListener('change', repInfo);
+  }
   q('[data-save]').onclick = () => runTasks(api('saveTask', {
     id: f.id, part: f.part, title: q('[name=title]').value, category: f.category,
     startDate: sd.value, endDate: ed.value || sd.value, time: q('[name=time]').value, status: q('[name=status]').value,
     assignees: f.visibility === 'private' ? [S.me.email] : f.assignees, visibility: f.visibility, memo: q('[name=memo]').value,
-  }), ex ? '수정했습니다.' : '업무 일정을 등록했습니다.');
+    ...(rep.freq ? { repeat: { freq: rep.freq, days: rep.days, until: q('[name=repUntil]').value, skipHolidays: q('[name=repSkip]').checked } } : {}),
+  }), ex ? '수정했습니다.' : rep.freq ? '반복 업무 일정을 등록했습니다.' : '업무 일정을 등록했습니다.');
 }
 
 async function removeTask(id) {
   const t = W.tasks.find((x) => x.id === id);
   if (!t) return;
+  if (t.series) { // 반복 일정: 이 날짜만 / 이후 반복 모두
+    const later = W.tasks.filter((x) => x.series === t.series && x.startDate >= t.startDate).length;
+    const m = openModal(`<header><h3>반복 업무 삭제</h3><button class="btn ghost sm" data-close>닫기</button></header>
+      <div class="content"><p>[${esc(t.part)}] ${esc(t.title)} · ${fmtRange(t)}</p>
+        <div class="more-list"><button data-one>이 일정만 삭제<span>›</span></button><button data-after style="color:var(--danger)">이 날짜 이후 반복 모두 삭제 (${later}건)<span>›</span></button></div></div>`);
+    m.querySelector('[data-one]').onclick = () => runTasks(api('deleteTask', id), '삭제했습니다.');
+    m.querySelector('[data-after]').onclick = () => runTasks(api('deleteTask', id, 'after'), `${later}건을 삭제했습니다.`);
+    return;
+  }
   const ok = await confirmBox('업무 일정 삭제', `<p>[${esc(t.part)}] ${esc(t.title)} · ${fmtRange(t)}<br>삭제할까요?</p>`, '삭제', true);
   if (ok) runTasks(api('deleteTask', id), '삭제했습니다.');
+}
+
+/** 반복 날짜 (서버 Code.gs repeatDates_와 같은 규칙 — 등록 화면 미리보기 · 미리보기 서버용) */
+function repeatDates(startDate, endDate, rep, holidaySet) {
+  const DAY = 864e5;
+  const toT = (ds) => Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10));
+  const toS = (t) => new Date(t).toISOString().slice(0, 10);
+  const hol = holidaySet || D.holidays || {};
+  const until = rep.until || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < startDate) throw new Error('반복 종료일을 확인하세요.');
+  const s0 = toT(startDate), u = toT(until), span = toT(endDate) - s0;
+  if (u - s0 > 366 * DAY) throw new Error('반복은 최대 1년까지 등록할 수 있습니다.');
+  const days = (rep.days || []).length ? rep.days : [new Date(s0).getUTCDay()];
+  const week0 = s0 - new Date(s0).getUTCDay() * DAY;
+  const out = [];
+  for (let t = s0; t <= u; t += DAY) {
+    const d = new Date(t), dow = d.getUTCDay(), ds = toS(t);
+    const hit = rep.freq === 'weekday' ? dow >= 1 && dow <= 5
+      : rep.freq === 'weekly' ? days.includes(dow)
+        : rep.freq === 'biweekly' ? days.includes(dow) && Math.floor((t - week0) / (7 * DAY)) % 2 === 0
+          : d.getUTCDate() === new Date(s0).getUTCDate();
+    if (!hit || (rep.skipHolidays && hol[ds])) continue;
+    out.push([ds, toS(t + span)]);
+    if (out.length > 100) throw new Error('반복은 한 번에 100회까지 등록할 수 있습니다. 종료일을 앞당겨 주세요.');
+  }
+  if (!out.length) throw new Error('반복 조건에 맞는 날짜가 없습니다.');
+  return out;
 }
 
 /* ---------- 중요 일정 (등록·수정은 PM, 보기는 전체) ---------- */
@@ -2403,6 +2489,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-16', items: [
+    { x: '업무 일정을 반복으로 등록할 수 있어요 (매일 평일 · 매주 · 격주 · 매월, 공휴일 건너뛰기). 지울 때는 이 일정만 또는 이후 반복 모두를 고를 수 있어요.' },
     { x: '휴가 · 중요 일정 · 업무 카드의 달력(+) 버튼으로 일정을 내 구글 캘린더나 휴대폰 캘린더에 추가할 수 있어요.' },
   ] },
   { d: '2026-10-15', items: [
