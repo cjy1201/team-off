@@ -909,6 +909,13 @@ const Mock = (() => {
         persist(); return this.getTasks(token);
       }
       db.tasks = db.tasks.filter((t) => t.id !== row.id).concat([row]);
+      if (ex && ex.series && (i.scope === 'after' || i.scope === 'all')) { // 반복 수정 범위 (서버와 같은 규칙)
+        const pick = (x) => x.series === ex.series && x.id !== ex.id && (i.scope === 'all' || x.startDate >= ex.startDate);
+        const n = db.tasks.filter(pick).length;
+        db.tasks = db.tasks.map((x) => (pick(x) ? { ...x, part, title: row.title, category: row.category, time: row.time, assignees: row.assignees, visibility: vis, memo: row.memo } : x));
+        log(u, 'task', '반복 수정', '', `[${part}] ${row.title} · ${n + 1}건`); persist();
+        return this.getTasks(token);
+      }
       log(u, 'task', ex ? '수정' : '등록', '', vis === 'private' ? `[${part}] (나만 보기 업무)` : `[${part}] ${row.title} ${fmtRange(row)}`);
       taskNews(u, ex, row); persist();
       return this.getTasks(token);
@@ -1754,7 +1761,9 @@ function openTaskForm(id, date) {
         <button type="button" data-vis="assignees" class="${f.visibility === 'assignees' ? 'on' : ''}">담당자만</button>
         ${mine ? `<button type="button" data-vis="private" class="${f.visibility === 'private' ? 'on' : ''}">나만 보기</button>` : ''}</div>
         <div class="muted small" data-vishelp style="margin-top:4px"></div></div>
-      ${ex ? (ex.series ? '<div class="infobox" style="margin:0 0 8px">↻ 반복 일정이에요. 여기서 고치면 <b>이 날짜 일정만</b> 바뀌어요.</div>' : '') : `<div class="field"><label>반복 <span class="muted" style="font-weight:400">선택</span></label>
+      ${ex ? (ex.series ? `<div class="field"><label>↻ 반복 일정 · 수정 범위</label>
+        <div class="seg" data-scopes><button type="button" data-scope="" class="on">이 일정만</button><button type="button" data-scope="after">이후 모두 (${W.tasks.filter((x) => x.series === ex.series && x.startDate >= ex.startDate).length}건)</button><button type="button" data-scope="all">전체 (${W.tasks.filter((x) => x.series === ex.series).length}건)</button></div>
+        <div class="muted small" data-scopehelp style="margin-top:4px">이 날짜 일정만 바뀌어요.</div></div>` : '') : `<div class="field"><label>반복 <span class="muted" style="font-weight:400">선택</span></label>
         <select name="repFreq"><option value="">반복 안 함</option><option value="weekday">매일 (평일)</option><option value="weekly">매주</option><option value="biweekly">격주</option><option value="monthly">매월 (같은 날짜)</option></select>
         <div data-repopts style="display:none;margin-top:8px">
           <div class="seg" data-repdays>${['일', '월', '화', '수', '목', '금', '토'].map((w, i) => `<button type="button" data-rd="${i}">${w}</button>`).join('')}</div>
@@ -1801,6 +1810,13 @@ function openTaskForm(id, date) {
   sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; checkAbsent(); };
   ed.onchange = checkAbsent;
   if (ex) q('[data-del]').onclick = () => removeTask(ex.id);
+  // 반복 일정 수정 범위 — 날짜·상태는 이 일정에만, 제목·분류·담당자·메모 등은 고른 범위에 함께 반영
+  let scope = '';
+  m.querySelectorAll('[data-scope]').forEach((b) => (b.onclick = () => {
+    scope = b.dataset.scope;
+    m.querySelectorAll('[data-scope]').forEach((x) => x.classList.toggle('on', x === b));
+    q('[data-scopehelp]').textContent = scope ? `제목·분류·시간·담당자·공개 범위·메모가 ${scope === 'all' ? '전체 반복 일정' : '이 날짜 이후 반복 일정'}에 함께 반영돼요. 날짜·상태는 이 일정만 바뀌어요.` : '이 날짜 일정만 바뀌어요.';
+  }));
   // 반복 (새 일정만): 방식 · 요일 · 종료일 · 공휴일 건너뛰기 → 몇 회 만들어지는지 미리 보여줌
   const rep = { freq: '', days: [], until: '', offDay: 'skip' };
   const repInfo = () => {
@@ -1842,7 +1858,7 @@ function openTaskForm(id, date) {
   }), '중요 일정을 등록했습니다. 모든 직원에게 보여요.') : runTasks(api('saveTask', {
     id: f.id, part: f.part, title: q('[name=title]').value, category: f.category,
     startDate: sd.value, endDate: ed.value || sd.value, time: q('[name=time]').value, status: q('[name=status]').value,
-    assignees: f.visibility === 'private' ? [S.me.email] : f.assignees, visibility: f.visibility, memo: q('[name=memo]').value,
+    assignees: f.visibility === 'private' ? [S.me.email] : f.assignees, visibility: f.visibility, memo: q('[name=memo]').value, scope,
     ...(rep.freq ? { repeat: { freq: rep.freq, days: rep.days, until: q('[name=repUntil]').value, offDay: q('[name=repOff]').value } } : {}),
   }), ex ? '수정했습니다.' : rep.freq ? '반복 업무 일정을 등록했습니다.' : '업무 일정을 등록했습니다.'));
 }
@@ -2541,6 +2557,7 @@ const UPDATES = [
     { x: '업무 일정 캘린더에도 중요 일정(★)이 보여요.' },
     { r: 'pm', x: "업무 일정 탭에서도 중요 일정을 등록할 수 있어요 ([+ 중요 일정] 버튼, 또는 업무 등록 화면의 '★ 중요 일정으로 등록')." },
     { x: '업무 일정을 반복으로 등록할 수 있어요 (매일 평일 · 매주 · 격주 · 매월). 공휴일(매월은 주말 포함)에 걸리면 건너뛰기 · 다음 영업일 · 이전 영업일 중에 고를 수 있어요. 지울 때는 이 일정만 또는 이후 반복 모두를 고를 수 있어요.' },
+    { x: '반복 업무를 수정할 때 이 일정만 · 이후 모두 · 전체 중에 고를 수 있어요. 제목 · 담당자 · 메모 등이 함께 바뀌고, 날짜 · 상태는 그 일정만 바뀌어요.' },
     { x: "업무 공개 범위에 '담당자만'이 생겼어요. 담당자와 등록한 사람에게만 보여요." },
     { x: '휴가 · 중요 일정 · 업무 카드의 달력(+) 버튼으로 일정을 내 구글 캘린더나 휴대폰 캘린더에 추가할 수 있어요.' },
   ] },
