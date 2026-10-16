@@ -1652,9 +1652,12 @@ function viewWork() {
     const ds = ymd(d);
     const items = tasksOn(ds, list);
     const cls = ['day', d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
-    const shown = items.slice(0, items.length > maxChips ? maxChips - 1 : maxChips);
+    const evs = (S.events || []).filter((e) => e.startDate <= ds && ds <= e.endDate); // 중요 일정도 업무 캘린더 맨 위에 ★
+    const room = Math.max(maxChips - evs.length, 1);
+    const shown = items.slice(0, items.length > room ? room - 1 : room);
     cells += `<div class="${cls}" data-act="wday" data-v="${ds}">
       <div class="dtop"><span class="dnum">${d.getDate()}</span>${D.holidays[ds] ? `<span class="hname">${esc(D.holidays[ds])}</span>` : ''}</div>
+      ${evs.map((e) => `<div class="chip evt" title="${esc(e.title)}${e.time ? ' ' + esc(e.time) : ''}"><span class="w">★</span><span class="nm">${esc(e.title)}</span></div>`).join('')}
       ${shown.map((t) => `<div class="chip k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}" title="[${esc(t.part)}] ${esc(t.title)}${(t.absences || []).length ? ' (담당자 부재)' : ''}">${(t.absences || []).length ? '<span class="w">⚠</span>' : ''}${mobile || ui.workPart ? '' : `<span class="pt">${esc(t.part)}</span>`}<span class="nm">${esc(t.title)}</span></div>`).join('')}
       ${items.length > shown.length ? `<div class="more">+${items.length - shown.length}</div>` : ''}
     </div>`;
@@ -1678,6 +1681,7 @@ function viewWork() {
       <div class="cal-actions">
         <div class="view-switch"><button class="${ui.workView === 'cal' ? 'on' : ''}" data-act="wview" data-v="cal">캘린더</button><button class="${ui.workView === 'timeline' ? 'on' : ''}" data-act="wview" data-v="timeline">타임라인</button></div>
         <label class="toggle"><input type="checkbox" data-act="wmine" ${ui.workMine ? 'checked' : ''}> 내 업무만</label>
+        ${isAdmin() ? '<button class="btn" data-act="newEvent">+ 중요 일정</button>' : ''}
         <button class="btn primary" data-act="newTask">+ 업무 등록</button>
       </div>
     </div>
@@ -1686,6 +1690,7 @@ function viewWork() {
       <div class="cal-grid">${cells}</div>
     </div>`}
     <div class="legend">${TASK_CATS.map((c, i) => `<span><i class="dot k-${i}"></i>${c}</span>`).join('')}
+      <span><span style="color:var(--evt)">★</span> 중요 일정</span>
       <span><span style="color:var(--warn)">⚠</span> 담당자 부재</span>
       <span>· 휴가 일정과는 별도로 관리됩니다</span></div>
     <div class="section-title">${first.getMonth() + 1}월 업무 <span class="muted small">${monthList.length}건</span></div>
@@ -1695,8 +1700,9 @@ function viewWork() {
 function openWorkDay(ds) {
   const items = tasksOn(ds, workFiltered());
   const d = parse(ds);
+  const evs = (S.events || []).filter((e) => e.startDate <= ds && ds <= e.endDate);
   openModal(`<header><h3>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]}) 업무</h3><button class="btn ghost sm" data-close>닫기</button></header>
-    <div class="content"><div class="list">${items.length ? items.map(taskItem).join('') : '<div class="empty">등록된 업무가 없습니다.</div>'}</div></div>
+    <div class="content">${evs.length ? `<div class="evt-list" style="margin:0 0 12px">${evs.map(evtItem).join('')}</div>` : ''}<div class="list">${items.length ? items.map(taskItem).join('') : '<div class="empty">등록된 업무가 없습니다.</div>'}</div></div>
     <footer><span class="spacer"></span><button class="btn primary" data-act="newTask" data-v="${ds}">+ 이 날 업무 등록</button></footer>`);
 }
 
@@ -1757,6 +1763,8 @@ function openTaskForm(id, date) {
         </div></div>`}
       <div class="field" data-afield><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div><div data-absent></div></div>
       <div class="field"><label>메모</label><textarea name="memo" rows="3" maxlength="300" placeholder="링크, 참고사항">${esc(f.memo)}</textarea></div>
+      ${isAdmin() && !ex ? `<label class="toggle" style="color:var(--text)"><input type="checkbox" name="asEvent">
+        <span><b style="color:var(--evt)">★ 중요 일정으로 등록</b> <span class="muted small">— 업무 대신 중요 일정으로 저장돼서 모든 직원에게 보여요 (제목 · 날짜 · 시간 · 담당자 · 메모)</span></span></label>` : ''}
     </div>
     <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span>
       <button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '등록'}</button></footer>`);
@@ -1819,12 +1827,22 @@ function openTaskForm(id, date) {
     q('[name=repUntil]').onchange = repInfo; q('[name=repOff]').onchange = repInfo;
     sd.addEventListener('change', repInfo); ed.addEventListener('change', repInfo);
   }
-  q('[data-save]').onclick = () => runTasks(api('saveTask', {
+  // PM: '중요 일정으로 등록'을 켜면 업무 전용 칸(분류 · 상태 · 공개 범위 · 반복)을 숨기고 중요 일정으로 저장
+  const asEvent = q('[name=asEvent]');
+  if (asEvent) asEvent.onchange = () => {
+    m.querySelectorAll('[data-cat], [name=status], [data-vis], [name=repFreq]').forEach((el) => { const fld = el.closest('.field'); if (fld) fld.style.display = asEvent.checked ? 'none' : ''; });
+    q('[data-afield]').style.display = asEvent.checked || f.visibility !== 'private' ? '' : 'none';
+    q('[data-save]').textContent = asEvent.checked ? '중요 일정 등록' : '등록';
+  };
+  q('[data-save]').onclick = () => (asEvent && asEvent.checked ? run(api('saveEvent', {
+    id: '', title: q('[name=title]').value, startDate: sd.value, endDate: ed.value || sd.value, time: q('[name=time]').value,
+    memo: q('[name=memo]').value, assignees: f.assignees,
+  }), '중요 일정을 등록했습니다. 모든 직원에게 보여요.') : runTasks(api('saveTask', {
     id: f.id, part: f.part, title: q('[name=title]').value, category: f.category,
     startDate: sd.value, endDate: ed.value || sd.value, time: q('[name=time]').value, status: q('[name=status]').value,
     assignees: f.visibility === 'private' ? [S.me.email] : f.assignees, visibility: f.visibility, memo: q('[name=memo]').value,
     ...(rep.freq ? { repeat: { freq: rep.freq, days: rep.days, until: q('[name=repUntil]').value, offDay: q('[name=repOff]').value } } : {}),
-  }), ex ? '수정했습니다.' : rep.freq ? '반복 업무 일정을 등록했습니다.' : '업무 일정을 등록했습니다.');
+  }), ex ? '수정했습니다.' : rep.freq ? '반복 업무 일정을 등록했습니다.' : '업무 일정을 등록했습니다.'));
 }
 
 async function removeTask(id) {
@@ -2517,6 +2535,8 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-16', items: [
+    { x: '업무 일정 캘린더에도 중요 일정(★)이 보여요.' },
+    { r: 'pm', x: "업무 일정 탭에서도 중요 일정을 등록할 수 있어요 ([+ 중요 일정] 버튼, 또는 업무 등록 화면의 '★ 중요 일정으로 등록')." },
     { x: '업무 일정을 반복으로 등록할 수 있어요 (매일 평일 · 매주 · 격주 · 매월). 공휴일(매월은 주말 포함)에 걸리면 건너뛰기 · 다음 영업일 · 이전 영업일 중에 고를 수 있어요. 지울 때는 이 일정만 또는 이후 반복 모두를 고를 수 있어요.' },
     { x: "업무 공개 범위에 '담당자만'이 생겼어요. 담당자와 등록한 사람에게만 보여요." },
     { x: '휴가 · 중요 일정 · 업무 카드의 달력(+) 버튼으로 일정을 내 구글 캘린더나 휴대폰 캘린더에 추가할 수 있어요.' },
@@ -2654,7 +2674,7 @@ function calEntry(kind, id) {
   const t = (W.tasks || []).find((x) => x.id === id);
   if (!t) return null;
   return { title: `[업무] ${t.title}`, startDate: t.startDate, endDate: t.endDate, time: parseTimeRange(t.time),
-    details: [`${t.part} · ${t.category}`, t.assignees.length ? '담당: ' + t.assignees.map(nameOf).join(', ') : '', t.memo || ''].filter(Boolean).join('\n') };
+    details: [`${t.part}${t.category ? ' · ' + t.category : ''}`, t.assignees.length ? '담당: ' + t.assignees.map(nameOf).join(', ') : '', t.memo || ''].filter(Boolean).join('\n') };
 }
 const ymdCompact = (ds) => ds.replace(/-/g, '');
 /** 하루 종일: 끝 날짜 다음 날 (캘린더 규칙) / 시간 있으면 첫날 시작 ~ 마지막 날 끝 (한국 시간) */
