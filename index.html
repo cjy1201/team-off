@@ -1732,7 +1732,7 @@ function openTaskForm(id, date) {
   const m = openModal(`
     <header><h3>${ex ? '업무 일정 수정' : '업무 일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
-      <div class="field"><label>파트 <span class="req">*</span></label>${isAdmin() && !ex
+      <div class="field"><label>파트 <span class="req">*</span></label>${isAdmin() /* PM은 수정할 때도 파트를 바꿀 수 있음 (파트원 · PL은 자기 파트 고정) */
         ? `<select name="part"><option value="">— 파트 선택 —</option>${TASK_PARTS.map((p) => `<option value="${p}" ${f.part === p ? 'selected' : ''}>${p === '전체' ? '전체 파트 (공통)' : p}</option>`).join('')}</select>`
         : `<input value="${esc(f.part)}" disabled>`}</div>
       <div class="field"><label>제목 <span class="req">*</span></label><input name="title" maxlength="60" value="${esc(f.title)}" placeholder="예: 10월 정기배포, 앱 3.2 회귀 테스트"></div>
@@ -2536,7 +2536,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-16', items: [
-    { r: 'pm', x: "업무 등록 때 파트를 '전체 파트 (공통)'로 고를 수 있어요. 파트를 골라 봐도 공통 업무는 함께 보여요." },
+    { r: 'pm', x: "업무 등록 때 파트를 '전체 파트 (공통)'로 고를 수 있어요. 파트를 골라 봐도 공통 업무는 함께 보여요. 수정할 때도 파트를 바꿀 수 있어요." },
     { x: '업무 일정 캘린더에도 중요 일정(★)이 보여요.' },
     { r: 'pm', x: "업무 일정 탭에서도 중요 일정을 등록할 수 있어요 ([+ 중요 일정] 버튼, 또는 업무 등록 화면의 '★ 중요 일정으로 등록')." },
     { x: '업무 일정을 반복으로 등록할 수 있어요 (매일 평일 · 매주 · 격주 · 매월). 공휴일(매월은 주말 포함)에 걸리면 건너뛰기 · 다음 영업일 · 이전 영업일 중에 고를 수 있어요. 지울 때는 이 일정만 또는 이후 반복 모두를 고를 수 있어요.' },
