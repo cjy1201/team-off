@@ -216,6 +216,7 @@
   .seg button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
   .seg button.on { border-color: var(--primary); background: var(--primary-weak); color: var(--primary); }
 
+  .toast .tbtn { margin-left: 12px; background: none; border: 0; color: #93c5fd; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 100; max-width: calc(100% - 32px); box-shadow: 0 8px 20px rgba(0,0,0,.2); }
   .toast.err { background: var(--danger); }
   .loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.4); z-index: 90; }
@@ -285,6 +286,9 @@
   .chip .pt { flex: none; font-size: 9.5px; font-weight: 700; line-height: 13px; padding: 0 4px; border-radius: 3px; background: rgba(255,255,255,.28); } /* 파트 = 작은 태그, 제목과 구분 */
   .chip.done .pt { text-decoration: none; }
   .chip.done { opacity: .45; text-decoration: line-through; }
+  .chip[draggable="true"] { cursor: grab; }
+  .chip.dragging { opacity: .35; }
+  .day.drop-over { background: var(--primary-weak); box-shadow: inset 0 0 0 2px var(--primary); }
   .chips-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .chips-row button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
   .chips-row button.on { border-color: var(--primary); background: var(--primary-weak); color: var(--primary); }
@@ -1654,6 +1658,7 @@ function viewWork() {
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
   const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
   const mobile = window.matchMedia('(max-width: 640px)').matches;
+  const canDrag = !mobile && window.matchMedia('(pointer: fine)').matches; // PC(마우스)에서만 끌어서 옮기기
   const maxChips = 5;
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
@@ -1667,7 +1672,7 @@ function viewWork() {
     cells += `<div class="${cls}" data-act="wday" data-v="${ds}">
       <div class="dtop"><span class="dnum">${d.getDate()}</span>${D.holidays[ds] ? `<span class="hname">${esc(D.holidays[ds])}</span>` : ''}</div>
       ${evs.map((e) => `<div class="chip evt" title="${esc(e.title)}${e.time ? ' ' + esc(e.time) : ''}"><span class="w">★</span><span class="nm">${esc(e.title)}</span></div>`).join('')}
-      ${shown.map((t) => `<div class="chip k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}" title="[${esc(t.part)}] ${esc(t.title)}${(t.absences || []).length ? ' (담당자 부재)' : ''}">${(t.absences || []).length ? '<span class="w">⚠</span>' : ''}${mobile || ui.workPart ? '' : `<span class="pt">${esc(t.part)}</span>`}<span class="nm">${esc(t.title)}</span></div>`).join('')}
+      ${shown.map((t) => `<div class="chip k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}"${canDrag && t.canEdit ? ` draggable="true" data-tid="${t.id}"` : ''} title="[${esc(t.part)}] ${esc(t.title)}${(t.absences || []).length ? ' (담당자 부재)' : ''}${canDrag && t.canEdit ? ' · 끌어서 날짜 옮기기' : ''}">${(t.absences || []).length ? '<span class="w">⚠</span>' : ''}${mobile || ui.workPart ? '' : `<span class="pt">${esc(t.part)}</span>`}<span class="nm">${esc(t.title)}</span></div>`).join('')}
       ${items.length > shown.length ? `<div class="more">+${items.length - shown.length}</div>` : ''}
     </div>`;
   }
@@ -2553,6 +2558,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-16', items: [
+    { x: 'PC 업무 일정 캘린더에서 업무 칩을 다른 날짜로 끌어 놓으면 일정이 옮겨져요 (기간은 그대로, 수정 권한이 있는 일정만). 옮긴 뒤 [되돌리기]로 원래대로 돌릴 수 있어요.' },
     { r: 'pm', x: "업무 등록 때 파트를 '전체 파트 (공통)'로 고를 수 있어요. 파트를 골라 봐도 공통 업무는 함께 보여요. 수정할 때도 파트를 바꿀 수 있어요." },
     { x: '업무 일정 캘린더에도 중요 일정(★)이 보여요.' },
     { r: 'pm', x: "업무 일정 탭에서도 중요 일정을 등록할 수 있어요 ([+ 중요 일정] 버튼, 또는 업무 등록 화면의 '★ 중요 일정으로 등록')." },
@@ -3218,14 +3224,20 @@ function openHolidayForm(date) {
    서버 호출 / 이벤트
    ========================================================= */
 let $toast = null, toastTimer = null;
-function toast(msg, err) {
+function toast(msg, err, action) {
   if ($toast) $toast.remove();
   $toast = document.createElement('div');
   $toast.className = 'toast' + (err ? ' err' : '');
   $toast.textContent = msg;
+  if (action) { // 예: [되돌리기]
+    const b = document.createElement('button');
+    b.className = 'tbtn'; b.textContent = action.label;
+    b.onclick = () => { if ($toast) { $toast.remove(); $toast = null; } action.fn(); };
+    $toast.appendChild(b);
+  }
   document.body.appendChild($toast);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { if ($toast) { $toast.remove(); $toast = null; } }, 3200);
+  toastTimer = setTimeout(() => { if ($toast) { $toast.remove(); $toast = null; } }, action ? 6000 : 3200);
 }
 
 let $loading = null;
@@ -3313,6 +3325,50 @@ document.addEventListener('submit', (e) => {
       run(api('changePassword', v('current'), v('next'), rememberMode || urlToken), '비밀번호를 변경했습니다.');
       break;
   }
+});
+
+// PC 업무 캘린더: 업무 칩을 다른 날짜로 끌어 놓으면 기간을 유지한 채 옮김 (수정 권한 있는 칩만 draggable)
+let dragTask = null;
+document.addEventListener('dragstart', (e) => {
+  const c = e.target.closest && e.target.closest('[data-tid]');
+  const cell = c && c.closest('.day[data-act="wday"]');
+  if (!c || !cell) return;
+  dragTask = { id: c.dataset.tid, from: cell.dataset.v };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', c.dataset.tid);
+  c.classList.add('dragging');
+});
+document.addEventListener('dragend', (e) => {
+  if (e.target.classList) e.target.classList.remove('dragging');
+  document.querySelectorAll('.drop-over').forEach((x) => x.classList.remove('drop-over'));
+  dragTask = null;
+});
+document.addEventListener('dragover', (e) => {
+  const cell = dragTask && e.target.closest && e.target.closest('.day[data-act="wday"]');
+  if (!cell) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (!cell.classList.contains('drop-over')) {
+    document.querySelectorAll('.drop-over').forEach((x) => x.classList.remove('drop-over'));
+    cell.classList.add('drop-over');
+  }
+});
+document.addEventListener('drop', (e) => {
+  const cell = dragTask && e.target.closest && e.target.closest('.day[data-act="wday"]');
+  if (!cell) return;
+  e.preventDefault();
+  const { id, from } = dragTask;
+  dragTask = null;
+  document.querySelectorAll('.drop-over').forEach((x) => x.classList.remove('drop-over'));
+  const t = (W.tasks || []).find((x) => x.id === id);
+  const n = Math.round((parse(cell.dataset.v) - parse(from)) / 864e5);
+  if (!t || !n) return;
+  const move = (k) => ({ startDate: ymd(addDays(parse(t.startDate), k)), endDate: ymd(addDays(parse(t.endDate), k)) });
+  const to = move(n);
+  runTasks(api('saveTask', Object.assign({}, t, to, { scope: '' }))).then(() => {
+    if (!(W.tasks || []).some((x) => x.id === id && x.startDate === to.startDate)) return; // 저장 실패
+    toast(`${fmtRange(to)}(으)로 옮겼어요`, false, { label: '되돌리기', fn: () => runTasks(api('saveTask', Object.assign({}, t, { scope: '' })), '되돌렸어요') });
+  });
 });
 
 document.addEventListener('click', (e) => {
