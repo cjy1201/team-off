@@ -77,6 +77,8 @@
   .a2hs-steps { margin: 0; padding-left: 20px; line-height: 1.7; }
   .a2hs-steps li { margin: 6px 0; }
   .inline-ic { display: inline-block; width: 18px; height: 18px; vertical-align: -3px; color: var(--primary); }
+  .cal-add { padding: 4px 6px; color: var(--muted); }
+  .cal-add svg { display: block; width: 18px; height: 18px; } /* iOS: 버튼 속 svg는 block */
   .more-list { display: flex; flex-direction: column; }
   .more-list button { display: flex; justify-content: space-between; align-items: center; border: 0; border-bottom: 1px solid var(--border); background: none; padding: 14px 4px; font-size: 15px; font-weight: 600; text-align: left; }
   .more-list button:last-child { border-bottom: 0; }
@@ -1448,9 +1450,10 @@ function leaveItem(l, opts = {}) {
       <div class="meta">대직자 ${l.substitutes.map((e) => esc(nameOf(e))).join(', ')}${l.memo ? ' · ' + esc(l.memo) : ''}</div>
       ${c.length ? `<div class="warnbox">${c.map((x) => `<div>⚠ ${esc(x)}</div>`).join('')}</div>` : ''}
     </div>
-    ${canEdit(l) ? `<div class="actions">
-      <button class="btn sm" data-act="editLeave" data-v="${l.id}">수정</button>
-      <button class="btn sm danger" data-act="delLeave" data-v="${l.id}">삭제</button></div>` : ''}
+    ${canEdit(l) || !past ? `<div class="actions">
+      ${past ? '' : `<button class="btn sm ghost cal-add" data-act="toCal" data-v="leave:${l.id}" title="내 캘린더에 추가" aria-label="내 캘린더에 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/></svg></button>`}
+      ${canEdit(l) ? `<button class="btn sm" data-act="editLeave" data-v="${l.id}">수정</button>
+      <button class="btn sm danger" data-act="delLeave" data-v="${l.id}">삭제</button>` : ''}</div>` : ''}
   </div>`;
 }
 
@@ -1515,10 +1518,11 @@ function taskItem(t) {
       ${t.memo ? `<div class="meta" style="white-space:pre-wrap">${esc(t.memo)}</div>` : ''}
       ${(t.absences || []).length ? `<div class="absent-box">⚠ 담당자 부재: ${t.absences.map(esc).join(', ')}</div>` : ''}
     </div>
-    ${t.canEdit ? `<div class="actions">
-      <select class="status-sel" data-act="tstatus" data-v="${t.id}" aria-label="상태">${TASK_STATUS.map((st) => `<option ${t.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select>
+    ${t.canEdit || t.endDate >= todayStr() ? `<div class="actions">
+      ${t.endDate >= todayStr() && t.status !== '완료' ? `<button class="btn sm ghost cal-add" data-act="toCal" data-v="task:${t.id}" title="내 캘린더에 추가" aria-label="내 캘린더에 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/></svg></button>` : ''}
+      ${t.canEdit ? `<select class="status-sel" data-act="tstatus" data-v="${t.id}" aria-label="상태">${TASK_STATUS.map((st) => `<option ${t.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select>
       <button class="btn sm" data-act="editTask" data-v="${t.id}">수정</button>
-      <button class="btn sm danger" data-act="delTask" data-v="${t.id}">삭제</button></div>` : ''}
+      <button class="btn sm danger" data-act="delTask" data-v="${t.id}">삭제</button>` : ''}</div>` : ''}
   </div>`;
 }
 
@@ -1772,8 +1776,9 @@ function evtItem(e) {
   return `<div class="card evt-item ${e.endDate < todayStr() ? 'past' : ''}" style="${e.endDate < todayStr() ? 'opacity:.6' : ''}">
     <div class="when">${lines.map((x, i) => `<div${i ? ' class="sub"' : ''}>${i ? '' : '★ '}${esc(x)}</div>`).join('')}</div>
     <div class="what"><b>${esc(e.title)}</b>${(e.assignees || []).length ? `<div class="small">담당 ${e.assignees.map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ')}</div>` : ''}${e.memo ? `<div class="muted small" style="white-space:pre-wrap">${esc(e.memo)}</div>` : ''}</div>
-    ${isAdmin() ? `<div class="actions evt-actions"><button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
-      <button class="btn sm danger" data-act="delEvent" data-v="${e.id}">삭제</button></div>` : ''}</div>`;
+    ${isAdmin() || e.endDate >= todayStr() ? `<div class="actions evt-actions">${e.endDate >= todayStr() ? `<button class="btn sm ghost cal-add" data-act="toCal" data-v="event:${e.id}" title="내 캘린더에 추가" aria-label="내 캘린더에 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/></svg></button>` : ''}
+      ${isAdmin() ? `<button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
+      <button class="btn sm danger" data-act="delEvent" data-v="${e.id}">삭제</button>` : ''}</div>` : ''}</div>`;
 }
 
 function viewEvents() {
@@ -2397,6 +2402,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-10-16', items: [
+    { x: '휴가 · 중요 일정 · 업무 카드의 달력(+) 버튼으로 일정을 내 구글 캘린더나 휴대폰 캘린더에 추가할 수 있어요.' },
+  ] },
   { d: '2026-10-15', items: [
     { x: '캘린더에서 내 일정은 칩 안쪽에 흰 테두리와 굵은 글씨로 보여요.' },
     { x: '휴대폰에서 아래에서 올라온 창은 아래로 쓸어내리면 닫혀요. 보고 있는 탭을 다시 누르면 맨 위로 가요.' },
@@ -2498,6 +2506,84 @@ function flashDate(ds) {
   cell.classList.add('flash');
   cell.scrollIntoView({ block: 'center', behavior: 'smooth' });
   setTimeout(() => cell.classList.remove('flash'), 2000);
+}
+
+/* ---------- 내 캘린더에 추가 (구글 캘린더 · 휴대폰 캘린더) ----------
+ * 구글: 미리 채워진 등록 화면 주소를 연다 (계정 연결 없이, 저장은 본인이). 휴대폰: 일정 파일(.ics)을 열어 캘린더 앱에 추가.
+ * 시간: '09:00~22:00' 같은 글에서 읽고, 없으면 하루 종일. 반차는 오전 09~14시, 오후 14~18시, 반반차 16~18시.
+ * 넣은 일정은 복사본이라 여기서 바꿔도 따라 바뀌지 않는다.
+ */
+const HALF_TIME = { 오전반차: ['09:00', '14:00'], 오후반차: ['14:00', '18:00'], 반반차: ['16:00', '18:00'] };
+function parseTimeRange(txt) {
+  const m = String(txt || '').match(/(\d{1,2}):(\d{2})\s*[~\-–]?\s*(?:(\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  const a = `${pad(+m[1])}:${m[2]}`;
+  const b = m[3] ? `${pad(+m[3])}:${m[4]}` : `${pad(Math.min(+m[1] + 1, 23))}:${m[2]}`; // 끝 시간이 없으면 1시간
+  return [a, b];
+}
+function calEntry(kind, id) {
+  if (kind === 'leave') {
+    const l = S.leaves.find((x) => x.id === id);
+    if (!l) return null;
+    const who = l.email === S.me.email ? '' : nameOf(l.email) + ' ';
+    return { title: `[휴가] ${who}${l.type}`, startDate: l.startDate, endDate: l.endDate, time: HALF_TIME[l.type] || null,
+      details: `대직자: ${l.substitutes.map(nameOf).join(', ') || '-'}${l.memo ? '\n메모: ' + l.memo : ''}` };
+  }
+  if (kind === 'event') {
+    const e = (S.events || []).find((x) => x.id === id);
+    if (!e) return null;
+    return { title: `[중요] ${e.title}`, startDate: e.startDate, endDate: e.endDate, time: parseTimeRange(e.time),
+      details: [(e.assignees || []).length ? '담당: ' + e.assignees.map(nameOf).join(', ') : '', e.memo || ''].filter(Boolean).join('\n') };
+  }
+  const t = (W.tasks || []).find((x) => x.id === id);
+  if (!t) return null;
+  return { title: `[업무] ${t.title}`, startDate: t.startDate, endDate: t.endDate, time: parseTimeRange(t.time),
+    details: [`${t.part} · ${t.category}`, t.assignees.length ? '담당: ' + t.assignees.map(nameOf).join(', ') : '', t.memo || ''].filter(Boolean).join('\n') };
+}
+const ymdCompact = (ds) => ds.replace(/-/g, '');
+/** 하루 종일: 끝 날짜 다음 날 (캘린더 규칙) / 시간 있으면 첫날 시작 ~ 마지막 날 끝 (한국 시간) */
+function calRange(c) {
+  if (!c.time) return { allDay: true, start: ymdCompact(c.startDate), end: ymdCompact(ymd(addDays(parse(c.endDate), 1))) };
+  return { allDay: false, start: `${ymdCompact(c.startDate)}T${c.time[0].replace(':', '')}00`, end: `${ymdCompact(c.endDate)}T${c.time[1].replace(':', '')}00` };
+}
+function googleCalUrl(c) {
+  const r = calRange(c);
+  const q = [['action', 'TEMPLATE'], ['text', c.title], ['dates', `${r.start}/${r.end}`], ['details', c.details + '\n\n슈퍼SOL 전담반 일정에서 추가'], ['ctz', 'Asia/Seoul']]
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  return ['https:', '', 'calendar.google.com', 'calendar', 'render'].join('/') + '?' + q; // 슬래시 두 개를 문자열에 쓰지 않으려고 조각으로
+}
+function icsText(c) {
+  const r = calRange(c);
+  const esc2 = (v) => String(v).replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  // 시간 있는 일정은 한국 시간 → UTC(Z)로 적어서 시간대 정보 없이도 정확하게
+  const utc = (t) => { const d = new Date(Date.UTC(+t.slice(0, 4), +t.slice(4, 6) - 1, +t.slice(6, 8), +t.slice(9, 11) - 9, +t.slice(11, 13))); return d.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z'; };
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:super-sol-schedule', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+    `UID:${Date.now()}-${Math.random().toString(36).slice(2)}@super-sol`, `DTSTAMP:${stamp}`,
+    r.allDay ? `DTSTART;VALUE=DATE:${r.start}` : `DTSTART:${utc(r.start)}`,
+    r.allDay ? `DTEND;VALUE=DATE:${r.end}` : `DTEND:${utc(r.end)}`,
+    `SUMMARY:${esc2(c.title)}`, `DESCRIPTION:${esc2(c.details)}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+}
+function openToCal(v) {
+  const i = v.indexOf(':');
+  const c = calEntry(v.slice(0, i), v.slice(i + 1));
+  if (!c) return toast('일정을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.', true);
+  const when = fmtRange(c) + (c.time ? ` ${c.time[0]}~${c.time[1]}` : ' (하루 종일)');
+  const m = openModal(`<header><h3>내 캘린더에 추가</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content"><div class="infobox" style="margin:0 0 12px"><b>${esc(c.title)}</b><br><span class="small">${esc(when)}</span></div>
+      <div class="more-list">
+        <button data-gcal>구글 캘린더에 추가<span>›</span></button>
+        <button data-ics>휴대폰 캘린더에 추가 <span class="muted small" style="font-weight:500">아이폰 캘린더 등</span><span>›</span></button>
+      </div>
+      <p class="muted small" style="margin:10px 0 0">추가한 일정은 복사본이라, 여기서 날짜를 바꿔도 내 캘린더에는 바뀌지 않아요. 회사망(모개망)에서는 구글 캘린더가 열리지 않을 수 있어요.</p></div>`);
+  m.querySelector('[data-gcal]').onclick = () => { window.open(googleCalUrl(c), '_blank'); closeModal(); };
+  m.querySelector('[data-ics]').onclick = () => {
+    const url = URL.createObjectURL(new Blob([icsText(c)], { type: 'text/calendar;charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${c.title.replace(/[\\/:*?"<>|]/g, '')}.ics` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    closeModal();
+  };
 }
 
 /* ---------- 화면 모드 (시스템 · 밝게 · 어둡게, 이 기기만) ---------- */
@@ -3080,6 +3166,7 @@ document.addEventListener('click', (e) => {
   switch (t.dataset.act) {
     case 'navMore': openNavMore(); break;
     case 'a2hs': addToHome(); break;
+    case 'toCal': openToCal(v); break;
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
     case 'tab':
       closeModal(); // 하단 탭바 '더보기' 창에서 고른 경우
