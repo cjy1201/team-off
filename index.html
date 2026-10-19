@@ -1040,6 +1040,13 @@ const Mock = (() => {
       const a = admin(token); need(h.date && (h.name || '').trim(), '날짜와 이름을 입력하세요.');
       db.holidays = db.holidays.filter((x) => x.date !== h.date).concat([{ date: h.date, name: h.name.trim() }]); return result(a);
     },
+    bulkAddHolidays(token, rows) {
+      const a = admin(token); need(rows && rows.length, '등록할 공휴일이 없습니다.');
+      let created = 0, skipped = 0;
+      rows.forEach((h) => { if (db.holidays.some((x) => x.date === h.date)) skipped++; else { db.holidays.push({ date: h.date, name: h.name.trim() }); created++; } });
+      if (created) log(a, 'holiday', '일괄 등록', '', `${created}건`);
+      return Object.assign(result(a), { created, skipped, errors: [] });
+    },
     deleteHoliday(token, date) {
       const a = admin(token); db.holidays = db.holidays.filter((x) => x.date !== date); return result(a);
     },
@@ -2391,7 +2398,7 @@ function viewHolidays() {
   return `
     <div class="section-title" style="margin-top:4px">
       <div class="month-nav"><button class="icon-btn" data-act="holYear" data-v="-1">‹</button><h2>${y}년 공휴일</h2><button class="icon-btn" data-act="holYear" data-v="1">›</button></div>
-      <button class="btn primary" data-act="newHoliday">+ 공휴일 추가</button></div>
+      <span style="display:flex;gap:6px"><button class="btn" data-act="bulkHoliday">일괄 추가</button><button class="btn primary" data-act="newHoliday">+ 공휴일 추가</button></span></div>
     <div class="infobox" style="margin:0 0 12px">공휴일은 캘린더에 빨간색으로 표시되고 휴가 사용일수 계산에서 제외됩니다. 임시공휴일·대체공휴일은 여기서 추가하세요.</div>
     <div class="card table-wrap"><table><tbody>
       ${list.length ? list.map((h) => `<tr><td>${fmtShort(h.date)}</td><td style="width:100%">${esc(h.name)}</td>
@@ -2607,6 +2614,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-19', items: [
+    { r: 'pm', x: '공휴일 탭의 [일괄 추가]로 한 해 공휴일을 붙여 넣어 한 번에 등록할 수 있어요.' },
     { x: '오른쪽 위 내 이름 메뉴의 [메뉴 순서 바꾸기]에서 메뉴 순서를 내 마음대로 바꿀 수 있어요. PC · 휴대폰 · 홈 화면 앱 모두 같은 순서로 보여요.' },
   ] },
   { d: '2026-10-16', items: [
@@ -3261,6 +3269,43 @@ async function resetPw(email) {
 
 /* ---------- 공휴일 ---------- */
 /** 공휴일 추가 · 이름 수정 (수정할 때는 날짜는 그대로 — 날짜를 바꾸려면 삭제 후 추가) */
+/** 공휴일 일괄 추가 — 한 줄에 '날짜 이름'. 날짜는 2027-01-01 · 2027.1.1 · 1/1(연도는 보고 있는 해) 모두 가능, (금) 같은 요일 표시는 무시 */
+function parseHolidayBulk(text, year) {
+  return String(text || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean).map((line) => {
+    const m = line.match(/^(?:(\d{4})\s*[-./년]\s*)?(\d{1,2})\s*[-./월]\s*(\d{1,2})\s*일?\s*(?:\([^)]*\))?\s*[\t|,·]?\s*(.*)$/);
+    if (!m) return { line, error: '날짜를 읽을 수 없어요' };
+    const date = `${m[1] || year}-${pad(+m[2])}-${pad(+m[3])}`;
+    const name = m[4].replace(/^[\t|,·\s]+/, '').trim().slice(0, 30);
+    const d = parse(date);
+    if (ymd(d) !== date) return { line, error: '없는 날짜예요' };
+    if (!name) return { line, date, error: '이름이 없어요' };
+    return { line, date, name, exists: S.holidays.some((h) => h.date === date) };
+  });
+}
+function openHolidayBulk() {
+  const y = String(ui.holYear);
+  const m = openModal(`<header><h3>공휴일 일괄 추가</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content"><p class="muted small" style="margin-top:0">한 줄에 하나씩 <b>날짜 이름</b>을 붙여 넣으세요. 예: <code>${y}-05-05 어린이날</code> 또는 <code>5/5 어린이날</code> (연도를 빼면 ${y}년). 이미 등록된 날짜는 건너뛰어요.</p>
+      <textarea name="hbulk" rows="9" style="width:100%" placeholder="${y}-01-01 신정&#10;2/8 설날 연휴"></textarea>
+      <div data-prev></div></div>
+    <footer><span style="flex:1"></span><button class="btn primary" data-save disabled>등록</button></footer>`);
+  const ta = m.querySelector('[name=hbulk]'), save = m.querySelector('[data-save]');
+  let rows = [];
+  const paint = () => {
+    rows = parseHolidayBulk(ta.value, y);
+    const ok = rows.filter((r) => !r.error && !r.exists);
+    save.disabled = !ok.length;
+    save.textContent = ok.length ? `${ok.length}건 등록` : '등록';
+    m.querySelector('[data-prev]').innerHTML = rows.length ? `<div class="card table-wrap" style="margin-top:10px"><table><tbody>${rows.map((r) => `<tr>
+      <td style="white-space:nowrap">${r.date && !r.error ? fmtShort(r.date) : esc(r.line)}</td><td style="width:100%">${esc(r.name || '')}</td>
+      <td style="white-space:nowrap;color:${r.error ? 'var(--danger)' : r.exists ? 'var(--muted)' : 'var(--t-am)'}">${r.error ? '✕ ' + esc(r.error) : r.exists ? '이미 있음' : '✓'}</td></tr>`).join('')}</tbody></table></div>` : '';
+  };
+  ta.oninput = paint;
+  save.onclick = () => run(api('bulkAddHolidays', rows.filter((r) => !r.error && !r.exists).map((r) => ({ date: r.date, name: r.name }))), '', (res) => {
+    toast(`공휴일 ${res.created}건을 등록했습니다.` + (res.skipped ? ` (이미 있는 ${res.skipped}건은 건너뜀)` : ''));
+  });
+}
+
 function openHolidayForm(date) {
   const ex = date ? S.holidays.find((h) => h.date === date) : null;
   const m = openModal(`
@@ -3457,6 +3502,7 @@ document.addEventListener('click', (e) => {
     case 'delUser': removeUser(v); break;
     case 'resetPw': resetPw(v); break;
     case 'newHoliday': openHolidayForm(); break;
+    case 'bulkHoliday': openHolidayBulk(); break;
     case 'editHoliday': openHolidayForm(v); break;
     case 'newEvent': openEventForm(null, v); break;
     case 'wpart': ui.workPart = v; render(); break;
