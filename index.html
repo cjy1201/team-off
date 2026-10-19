@@ -53,6 +53,10 @@
     font-size: 14px; line-height: 1.45; -webkit-text-size-adjust: 100%;
   }
   button, input, select, textarea { font: inherit; color: inherit; }
+  .nav-order .no-row { display: flex; align-items: center; gap: 6px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+  .nav-order .no-row.no-cut { border-top: 2px dashed var(--border); }
+  .nav-order .no-n { width: 20px; color: var(--muted); font-size: 12px; text-align: right; }
+  .nav-order .no-t { flex: 1; font-weight: 600; }
   .ds-toggle { font-size: 13px; margin-right: 4px; white-space: nowrap; }
   th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   th.sortable:hover, th.sortable.on { color: var(--primary); }
@@ -724,7 +728,7 @@ const Mock = (() => {
     const visible = (l) => pm || u.role === 'pl' || u.viewAll || mine(l) || leader(l.email);
     const brief = (l) => u.role === 'member' && !u.viewAll && !mine(l);
     return {
-      me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {}, ds: !!u.ds },
+      me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {}, ds: !!u.ds, navOrder: u.navOrder || [] },
       users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {}, ds: !!x.ds }
         : u.role === 'member' && u.viewAll && x.annual && Object.keys(x.annual).length
           ? { email: x.email, name: x.name, part: x.part, annual: Object.fromEntries(Object.entries(x.annual).map(([y, k]) => [y, typeof k === 'object'
@@ -839,6 +843,10 @@ const Mock = (() => {
     },
     setMyDefaultSubs(token, subs) {
       const u = auth(token); u.defaultSubs = checkDefs(subs, u.email); return result(u);
+    },
+    setMyNavOrder(token, order) {
+      const u = auth(token); const ok = ['cal', 'events', 'work', 'mine', 'all', 'members', 'holidays', 'history'];
+      u.navOrder = (order || []).filter((k, i, a) => ok.includes(k) && a.indexOf(k) === i); persist(); return result(u);
     },
     bulkAddUsers(token, rows) {
       const a = admin(token); need(rows && rows.length, '등록할 직원이 없습니다.');
@@ -1182,10 +1190,7 @@ function render() {
   if (S.me.mustChange) { $app.innerHTML = bar + viewForceChange(); return; }
 
   derive();
-  const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['work', '업무 일정'], ['mine', '내 일정']];
-  if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일'], ['history', '변경 이력']);
-  else if (canSeeAll()) tabs.push(['all', '전체 일정']);
-  else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
+  const tabs = myTabs();
   if (!tabs.some((t) => t[0] === ui.tab)) ui.tab = 'cal';
 
   $app.innerHTML = bar + `
@@ -1227,13 +1232,27 @@ const BN_ICON = {
   work: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8.5 7V5.5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2V7M3 12.5h18"/>',
   mine: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>',
   all: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/>',
+  members: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.5 16.5a3.5 3.5 0 0 1 7 0M14.5 10h4M14.5 13.5h3"/>',
+  holidays: '<path d="M5 21V4M5 4.5h11l-2 3.5 2 3.5H5"/>',
+  history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4"/><path d="M12 8v4.5l3 1.8"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
 };
+/** 보이는 탭 (권한별) — 내 메뉴 순서(S.me.navOrder)대로, 순서에 없는 탭은 기본 순서로 뒤에 */
+function myTabs(defaultOrder) {
+  const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['work', '업무 일정'], ['mine', '내 일정']];
+  if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일'], ['history', '변경 이력']);
+  else if (canSeeAll()) tabs.push(['all', '전체 일정']);
+  else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
+  const order = defaultOrder ? [] : S.me.navOrder || [];
+  const rank = (k) => (order.indexOf(k) >= 0 ? order.indexOf(k) : 100);
+  return tabs.map((t, i) => [t, i]).sort((a, b) => rank(a[0][0]) - rank(b[0][0]) || a[1] - b[1]).map(([t]) => t);
+}
+const NAV_MAIN = 4; // 하단 탭바에 바로 보이는 메뉴 수 (나머지는 '더보기')
 function bottomNav(tabs) {
-  const label = { cal: '캘린더', events: '중요', work: '업무', mine: '내 일정', more: '더보기', all: canSeeAll() ? '전체' : '파트' };
-  const main = ['cal', 'events', 'work', 'mine'];
+  const label = { cal: '캘린더', events: '중요', work: '업무', mine: '내 일정', more: '더보기', all: canSeeAll() ? '전체' : '파트', members: '팀원', holidays: '공휴일', history: '이력' };
+  const main = (tabs.length <= NAV_MAIN + 1 ? tabs : tabs.slice(0, NAV_MAIN)).map(([k]) => k);
   const extra = tabs.filter(([k]) => !main.includes(k));
-  const items = main.filter((k) => tabs.some((t) => t[0] === k)).map((k) => [k, label[k], 'tab']);
+  const items = main.map((k) => [k, label[k], 'tab']);
   if (extra.length === 1) items.push([extra[0][0], label[extra[0][0]] || extra[0][1], 'tab']);
   else if (extra.length > 1) items.push(['more', label.more, 'navMore']);
   const on = (k) => (k === 'more' ? extra.some(([x]) => x === ui.tab) : ui.tab === k);
@@ -1272,9 +1291,7 @@ async function addToHome() {
 
 /** 하단 탭바 '더보기' — 나머지 탭(PM: 전체 일정 · 팀원 관리 · 공휴일 · 변경 이력) */
 function openNavMore() {
-  const main = ['cal', 'events', 'work', 'mine'];
-  const tabs = [['all', canSeeAll() ? '전체 일정' : `${S.me.part} 파트 일정`], ['members', '팀원 관리'], ['holidays', '공휴일'], ['history', '변경 이력']]
-    .filter(([k]) => !main.includes(k) && (k === 'all' ? canSeeTeam() : isAdmin()));
+  const tabs = myTabs().slice(NAV_MAIN);
   openModal(`<header><h3>더보기</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content"><div class="more-list">${tabs.map(([k, t]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}<span>›</span></button>`).join('')}</div></div>`);
 }
@@ -2490,7 +2507,8 @@ function openAccount() {
   if (!subs.length) subs.push('');
   const m = openModal(`<header><h3>${esc(S.me.name)} <span class="muted small">${esc(S.me.email)}</span></h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
-      <button class="btn" data-act="guide" style="width:100%;margin-bottom:${IS_STANDALONE ? 12 : 8}px">사용 안내 · 업데이트 내역</button>
+      <button class="btn" data-act="guide" style="width:100%;margin-bottom:8px">사용 안내 · 업데이트 내역</button>
+      <button class="btn" data-act="navOrder" style="width:100%;margin-bottom:${IS_STANDALONE ? 12 : 8}px">메뉴 순서 바꾸기</button>
       ${IS_STANDALONE ? '' : '<button class="btn" data-act="a2hs" style="width:100%;margin-bottom:12px">홈 화면에 추가하기 (앱처럼 쓰기)</button>'}
       <div class="field" style="margin-top:0"><label>화면 모드 <span class="muted" style="font-weight:400">이 기기에만 적용</span></label>
         <div class="seg">${[['', '시스템 설정 따름'], ['light', '밝게'], ['dark', '어둡게']].map(([v, t]) => `<button type="button" data-act="setTheme" data-v="${v}" class="${themePref() === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>
@@ -2505,6 +2523,30 @@ function openAccount() {
   renderSubPicker(m.querySelector('[data-defsubs]'), S.me.email, subs, null, true);
   m.querySelector('[data-savesubs]').onclick = () => run(api('setMyDefaultSubs', subs.filter(Boolean)), '기본 대직자를 저장했습니다.');
   return m;
+}
+
+/** 내 메뉴 순서 — ▲▼로 옮기고 저장 (서버에 저장되어 PC · 휴대폰 · 홈 화면 앱 모두 같은 순서) */
+function openNavOrder() {
+  let list = myTabs();
+  const m = openModal(`<header><h3>메뉴 순서 바꾸기</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content"><p class="muted small" style="margin-top:0">위에 있는 메뉴가 앞에 보여요. 홈 화면 앱의 하단 탭바에는 앞의 ${NAV_MAIN}개가 보이고, 나머지는 '더보기'에 들어가요.</p>
+      <div class="nav-order" data-list></div></div>
+    <footer><button class="btn" data-reset>기본 순서로</button><span style="flex:1"></span><button class="btn primary" data-save>저장</button></footer>`);
+  const paint = () => {
+    m.querySelector('[data-list]').innerHTML = list.map(([k, t], i) => `<div class="no-row${list.length > NAV_MAIN + 1 && i === NAV_MAIN ? ' no-cut' : ''}"><span class="no-n">${i + 1}</span><span class="no-t">${esc(t)}</span>
+      <button class="btn sm" data-mv="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="위로">▲</button><button class="btn sm" data-mv="${i}" data-d="1" ${i === list.length - 1 ? 'disabled' : ''} aria-label="아래로">▼</button></div>`).join('');
+    m.querySelectorAll('[data-mv]').forEach((b) => (b.onclick = () => {
+      const i = +b.dataset.mv, j = i + +b.dataset.d;
+      [list[i], list[j]] = [list[j], list[i]]; paint();
+    }));
+  };
+  paint();
+  m.querySelector('[data-reset]').onclick = () => { list = myTabs(true); paint(); };
+  m.querySelector('[data-save]').onclick = () => {
+    const keys = list.map(([k]) => k);
+    const def = myTabs(true).map(([k]) => k);
+    run(api('setMyNavOrder', keys.join() === def.join() ? [] : keys), '메뉴 순서를 저장했습니다.');
+  };
 }
 
 /* ---------- 사용 안내 (이름 메뉴) ----------
@@ -2564,6 +2606,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-10-19', items: [
+    { x: '오른쪽 위 내 이름 메뉴의 [메뉴 순서 바꾸기]에서 메뉴 순서를 내 마음대로 바꿀 수 있어요. PC · 휴대폰 · 홈 화면 앱 모두 같은 순서로 보여요.' },
+  ] },
   { d: '2026-10-16', items: [
     { x: "업무 분류에 '인프라'(하늘색)가 생겼어요." },
     { r: 'pm', x: "팀원 관리 목록에서 파트원의 '전체조회'를 바로 켜고 끌 수 있어요 (DS직원 체크 옆)." },
@@ -3448,6 +3493,7 @@ document.addEventListener('click', (e) => {
     }
     case 'pickMember': ui.allFilter = { member: v, month: '', warnOnly: false }; render(); window.scrollTo(0, 0); break;
     case 'account': openAccount(); break;
+    case 'navOrder': openNavOrder(); break;
     case 'refresh': refreshData(true); break;
     case 'meal': approveMeal(); break;
     case 'copyAttendance': openAttendance(v); break;
