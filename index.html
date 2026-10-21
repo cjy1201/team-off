@@ -730,8 +730,8 @@ const Mock = (() => {
     return {
       me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {}, ds: !!u.ds, navOrder: u.navOrder || [] },
       users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {}, ds: !!x.ds }
-        : u.role === 'member' && u.viewAll && x.annual && Object.keys(x.annual).length
-          ? { email: x.email, name: x.name, part: x.part, annual: Object.fromEntries(Object.entries(x.annual).map(([y, k]) => [y, typeof k === 'object'
+        : u.role === 'member' && u.viewAll && !x.ds
+          ? { email: x.email, name: x.name, part: x.part, usage: true, annual: Object.fromEntries(Object.entries(x.annual || {}).map(([y, k]) => [y, typeof k === 'object'
             ? (({ 내역, ...rest }) => ({ ...rest, ...Object.fromEntries(GRANT_KINDS.filter((g) => (내역 || []).some((x2) => x2.kind === g)).map((g) => [g, 내역.filter((x2) => x2.kind === g).reduce((s2, x2) => s2 + x2.days, 0)])) }))(k) : k])) }
           : { email: x.email, name: x.name, part: x.part })),
       leaves: db.leaves.filter(visible).map((l) => (brief(l) ? { ...l, memo: '', conflicts: [] } : { ...l, conflicts: conflictsOf(l) })),
@@ -2057,10 +2057,10 @@ function pickBySearch(text, exactOnly) {
 function viewAll() {
   const f = ui.allFilter, today = todayStr(), year = today.slice(0, 4);
   const part = canSeeAll() ? ui.part : S.me.part;
-  // 휴가 사용 현황(개수)은 PM 전체, PL은 자기 파트만, '전체 일정 조회' 권한자는 부여 일수가 입력된 사람만
+  // 휴가 사용 현황(개수)은 PM 전체, PL은 자기 파트만, '전체 일정 조회' 권한자는 DS직원이 아닌 사람만 (서버가 usage 표시)
   const extOnly = !isAdmin() && !isPL() && !!S.me.viewAll;
   const usagePart = isAdmin() ? part : isPL() ? S.me.part : extOnly ? part || '' : null;
-  const usagePeople = usagePart === null ? [] : S.users.filter((u) => (!usagePart || u.part === usagePart) && (!extOnly || annualOf(u.email, u.annual, year).granted !== null));
+  const usagePeople = usagePart === null ? [] : S.users.filter((u) => (!usagePart || u.part === usagePart) && (!extOnly || u.usage));
   const showAnnual = isAdmin() || extOnly;
   const people = S.users.filter((u) => !part || u.part === part);
   let list = scoped().slice();
@@ -2129,7 +2129,7 @@ function viewAll() {
       ${isAdmin() ? '<button class="btn sm" data-act="annualForm">휴가 일수 입력</button>' : ''}</div>
     <div class="card table-wrap"><table>
       <thead><tr>${th('name', '이름', false)}${th('annual', '연차')}${th('half', '반차·반반차')}${th('total', '연차 합계')}${th('sick', '병가')}${th('edu', '연수/교육')}${th('etc', '기타')}${showAnnual ? th('granted', '부여 합계') + th('left', '남은 휴가') : ''}</tr></thead>
-      <tbody>${rows || `<tr><td colspan="9" class="muted">${extOnly ? '부여 일수가 입력된 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
+      <tbody>${rows || `<tr><td colspan="9" class="muted">${extOnly ? 'DS직원이 아닌 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
 }
 
 /* ---------- 휴가 일수 입력 (PM) — 일반휴가는 표에서, 특별·대체휴가는 사람별 부여 내역 ---------- */
@@ -2613,6 +2613,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-10-21', items: [
+    { r: 'viewer', x: '휴가 사용 현황에 DS직원이 아닌 직원이 모두 보여요 (휴가 부여 일수가 없는 사람도).' },
+  ] },
   { d: '2026-10-19', items: [
     { r: 'pm', x: '공휴일 탭의 [일괄 추가]로 한 해 공휴일을 붙여 넣어 한 번에 등록할 수 있어요.' },
     { x: '오른쪽 위 내 이름 메뉴의 [메뉴 순서 바꾸기]에서 메뉴 순서를 내 마음대로 바꿀 수 있어요. PC · 휴대폰 · 홈 화면 앱 모두 같은 순서로 보여요.' },
@@ -2664,7 +2667,7 @@ const UPDATES = [
   { d: '2026-10-06', items: [
     { r: 'annual', x: '캘린더 맨 위 [내 남은 휴가] 카드와 휴가 등록 화면에서 남은 휴가를 바로 볼 수 있어요. 남은 휴가를 넘기면 저장 전에 알려줘요.' },
     { r: 'pm', x: '특별 · 대체휴가는 [휴가 일수 입력] → [내역]에서 생길 때마다 날짜 · 일수 · 사유를 한 줄씩 추가해요.' },
-    { r: 'viewer', x: '[전체 일정] 아래에서 휴가 부여 대상자의 휴가 사용 현황을 볼 수 있어요.' },
+    { r: 'viewer', x: '[전체 일정] 아래에서 DS직원이 아닌 직원의 휴가 사용 현황을 볼 수 있어요.' },
   ] },
   { d: '2026-10-03', items: [
     { x: '새 소식(종 아이콘): 대직 지정 · 업무 배정 · 중요 일정 변경을 알려줘요.' },
