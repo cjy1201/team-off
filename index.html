@@ -61,7 +61,8 @@
   th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   th.sortable:hover, th.sortable.on { color: var(--primary); }
   .plink { color: var(--primary); cursor: pointer; font-weight: 600; }
-  .quick-dates { float: right; display: inline-flex; gap: 2px; margin-top: -3px; }
+  .label-row { display: flex !important; align-items: center; justify-content: space-between; gap: 4px; height: 17px; } /* 라벨 줄에 버튼이 있어도 높이는 다른 라벨과 같게 */
+  .quick-dates { display: inline-flex; gap: 2px; flex: none; }
   .quick-dates .btn { padding: 2px 8px; font-size: 12px; }
   .ptr { position: fixed; left: 0; right: 0; top: 0; z-index: 60; text-align: center; font-size: 13px; color: var(--muted); padding: 10px; opacity: 0; transform: translateY(-40px); pointer-events: none; transition: opacity .15s; }
   .people-search { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); width: 130px; }
@@ -216,6 +217,12 @@
   .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
   .req { color: var(--danger); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field > label.toggle { display: inline-flex; margin-bottom: 0; } .field input[type=checkbox] { width: auto; padding: 0; } /* 칸 안 체크박스 줄이 깨지지 않게 */
+  .row2 > * { min-width: 0; } /* 칸 안의 입력창이 옆 칸으로 넘치지 않게 */
+  /* iOS 사파리 날짜 칸: 기본 모양(가운데 정렬 · 고유 최소 폭 · 다른 높이 · 파란 글씨)을 다른 입력칸과 맞춤 */
+  input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; min-height: 40px; line-height: 20px; color: var(--text); font: inherit; }
+  input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; min-height: 20px; }
+  input[type=date]::-webkit-datetime-edit { padding: 0; }
   .seg { display: flex; flex-wrap: wrap; gap: 6px; }
   .seg button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
   .seg button.on { border-color: var(--primary); background: var(--primary-weak); color: var(--primary); }
@@ -2898,7 +2905,7 @@ function openLeaveForm(id, date, restore) {
       <div class="field"><label>유형 <span class="req">*</span></label>
         <div class="seg">${TYPES.map((t) => `<button type="button" data-type="${t}" class="${f.type === t ? 'on' : ''}"><i class="dot t-${t}"></i>${t}</button>`).join('')}</div></div>
       <div class="row2">
-        <div class="field"><label><span data-startlabel>시작일 <span class="req">*</span></span>
+        <div class="field"><label class="label-row"><span data-startlabel>시작일 <span class="req">*</span></span>
           <span class="quick-dates"><button type="button" class="btn sm ghost" data-qd="0">오늘</button><button type="button" class="btn sm ghost" data-qd="1">내일</button></span></label>
           <input type="date" name="startDate" value="${f.startDate}"></div>
         <div class="field" data-endwrap><label>종료일 <span class="req">*</span></label><input type="date" name="endDate" value="${f.endDate}"></div>
