@@ -1087,6 +1087,7 @@ const ui = {
   workMonth: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); })(),
   workPart: '',   // 업무 일정 파트 필터 ('' = 전체)
   workMine: false, // 내 담당·내가 쓴 것만
+  workHidePast: (() => { try { return localStorage.getItem('team-off-work-hide-past') === '1'; } catch (e) { return false; } })(), // 아래 목록에서 지난 업무 숨김 (이 기기에 기억)
   workView: 'cal', // 'cal' 캘린더 / 'timeline' 타임라인
   usageSort: { key: 'name', dir: 'asc' }, // 전체 일정 · 사용 현황 표 정렬
 };
@@ -1586,8 +1587,9 @@ function workFiltered() {
 function tasksOn(ds, list) {
   const d = parse(ds);
   return list.filter((t) => t.startDate <= ds && ds <= t.endDate && (t.startDate === t.endDate || !D.isOff(ds, d)))
-    .sort((a, b) => a.part.localeCompare(b.part) || a.title.localeCompare(b.title));
+    .sort((a, b) => taskTimeKey(a).localeCompare(taskTimeKey(b))); // 시간순 (시간 없는 업무가 먼저), 같으면 등록순 (정렬이 안정적이라 원래 순서 유지)
 }
+const taskTimeKey = (t) => { const r = parseTimeRange(t.time); return r ? r[0] : ''; };
 
 const isOverdue = (t) => t.status !== '완료' && t.endDate < todayStr();
 
@@ -1724,8 +1726,9 @@ function viewWork() {
     </div>`;
   }
   const ym = `${first.getFullYear()}-${pad(first.getMonth() + 1)}`;
-  const monthList = list.filter((t) => t.startDate.slice(0, 7) <= ym && ym <= t.endDate.slice(0, 7))
+  const monthAll = list.filter((t) => t.startDate.slice(0, 7) <= ym && ym <= t.endDate.slice(0, 7))
     .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.part.localeCompare(b.part));
+  const monthList = ui.workHidePast ? monthAll.filter((t) => t.endDate >= today) : monthAll; // 지난 업무 = 종료일이 오늘보다 전
 
   return `
     <div class="chips-row" style="margin-bottom:10px">
@@ -1754,8 +1757,9 @@ function viewWork() {
       <span><span style="color:var(--evt)">★</span> 중요 일정</span>
       <span><span style="color:var(--warn)">⚠</span> 담당자 부재</span>
       <span>· 휴가 일정과는 별도로 관리됩니다</span></div>
-    <div class="section-title">${first.getMonth() + 1}월 업무 <span class="muted small">${monthList.length}건</span></div>
-    <div class="list">${monthList.length ? monthList.map(taskItem).join('') : '<div class="card empty">이 달에 등록된 업무가 없습니다.</div>'}</div>`;
+    <div class="section-title"><span>${first.getMonth() + 1}월 업무 <span class="muted small">${monthList.length}건${monthAll.length > monthList.length ? ` · 지난 업무 ${monthAll.length - monthList.length}건 숨김` : ''}</span></span>
+      <label class="toggle"><input type="checkbox" data-act="wpast" ${ui.workHidePast ? 'checked' : ''}> 지난 업무 숨기기</label></div>
+    <div class="list">${monthList.length ? monthList.map(taskItem).join('') : `<div class="card empty">${monthAll.length ? '이 달 업무는 모두 지났습니다.' : '이 달에 등록된 업무가 없습니다.'}</div>`}</div>`;
 }
 
 function openWorkDay(ds) {
@@ -2642,7 +2646,9 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-22', items: [
-    { x: 'PC에서 단축키를 쓸 수 있어요. N 새로 등록 · ←/→ 달 이동 · T 오늘 · 숫자 1~8 메뉴 이동 · Ctrl(⌘)+S 저장 · Ctrl(⌘)+D 또는 업무를 Ctrl(⌘)+클릭하면 복사. 전체 목록은 ? 키나 이름 메뉴의 [단축키 보기]에서 볼 수 있어요.' },
+    { x: '업무 캘린더와 날짜 상세의 업무가 시간순으로 보여요 (시간 없는 업무가 먼저, 같은 시간은 등록순).' },
+    { x: "업무 일정 아래 목록에서 '지난 업무 숨기기'를 켜면 종료일이 지난 업무가 빠져요 (이 기기에 기억돼요)." },
+    { x: 'PC에서 단축키를 쓸 수 있어요. N 새로 등록 · ←/→ 달 이동 · T 오늘 · 숫자 1~8 메뉴 이동 · Ctrl(⌘)+S 저장 · 업무를 Ctrl(⌘)+클릭하면 바로 복사. 전체 목록은 ? 키나 이름 메뉴의 [단축키 보기]에서 볼 수 있어요.' },
     { x: '업무 수정 창의 [복사]로 같은 내용의 업무를 새로 등록할 수 있어요. 날짜만 바꾸면 돼요 (기간은 그대로 따라가요).' },
   ] },
   { d: '2026-10-21', items: [
@@ -3585,6 +3591,7 @@ document.addEventListener('change', (e) => {
     case 'mineOnly': ui.mineOnly = t.checked; render(); break;
     case 'part': ui.part = t.value; ui.allFilter.member = ''; render(); break;
     case 'wmine': ui.workMine = t.checked; render(); break;
+    case 'wpast': ui.workHidePast = t.checked; try { localStorage.setItem('team-off-work-hide-past', t.checked ? '1' : ''); } catch (e) {} render(); break;
     case 'tstatus': { // 목록에서 바로 상태 변경
       const task = W.tasks.find((x) => x.id === t.dataset.v);
       if (task) runTasks(api('saveTask', Object.assign({}, task, { status: t.value })), `상태를 '${t.value}'(으)로 바꿨습니다.`);
@@ -3632,7 +3639,7 @@ function goTab(v) {
 
 /*
  * 키보드 단축키 (PC). e.code(키 위치)로 판단해서 대소문자 · 한글 입력 상태와 상관없이 동작.
- * 입력칸에 쓰는 중에는 저장(Ctrl/⌘+S) · 복사(Ctrl/⌘+D) · Esc만.
+ * 입력칸에 쓰는 중에는 저장(Ctrl/⌘+S) · Esc만.
  */
 const SHORTCUTS = [
   ['N', '새로 등록 (캘린더·내 일정 → 휴가, 업무 일정 → 업무, 중요 일정 → 중요 일정)'],
@@ -3642,7 +3649,6 @@ const SHORTCUTS = [
   ['R', '최신 내용 불러오기'],
   ['/', '이름 검색 (전체 일정 탭으로 이동)'],
   ['Ctrl(⌘) + S', '열린 창 저장 · 등록'],
-  ['Ctrl(⌘) + D', '업무 수정 창에서 복사'],
   ['Ctrl(⌘) + 클릭', '업무 캘린더 칸 · 업무 카드를 바로 복사'],
   ['?', '단축키 목록'],
   ['Esc', '창 닫기'],
@@ -3650,7 +3656,7 @@ const SHORTCUTS = [
 function openShortcuts() {
   openModal(`<header><h3>단축키 <span class="muted small">PC</span></h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content"><table class="kbd-table"><tbody>${SHORTCUTS.map(([k, t]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(t)}</td></tr>`).join('')}</tbody></table>
-      <p class="muted small">입력칸에 글을 쓰는 중에는 Ctrl(⌘) + S · Ctrl(⌘) + D · Esc만 동작해요. 한글 입력 상태여도 같은 자리의 키로 동작해요.</p></div>`);
+      <p class="muted small">입력칸에 글을 쓰는 중에는 Ctrl(⌘) + S · Esc만 동작해요. 한글 입력 상태여도 같은 자리의 키로 동작해요.</p></div>`);
 }
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') return dismissModal();
@@ -3661,11 +3667,6 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     const b = $modal.querySelector('[data-save]') || $modal.querySelector('footer .btn.primary, button[type=submit].primary');
     if (b && !b.disabled) b.click();
-    return;
-  }
-  if (mod && e.code === 'KeyD') { // 업무 수정 창 → 복사 (브라우저 '북마크' 대신)
-    const b = $modal && $modal.querySelector('[data-copy]');
-    if (b) { e.preventDefault(); b.click(); }
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
