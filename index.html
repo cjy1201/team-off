@@ -188,6 +188,13 @@
   .item .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
   .item .actions { display: flex; gap: 6px; flex: none; }
   .item.past { opacity: .6; }
+  /* 좁은 목록(날짜 상세 창 · 휴대폰)에서는 버튼을 글 아래 줄로 — 글이 버튼에 밀려 한두 글자씩 줄바꿈되지 않게 */
+  .list { container-type: inline-size; }
+  @container (max-width: 560px) {
+    .item.barred:has(> .actions) { display: grid; grid-template-columns: 4px minmax(0, 1fr); column-gap: 12px; row-gap: 8px; }
+    .item.barred .bar { grid-row: 1 / span 2; }
+    .item.barred .actions { grid-column: 2; justify-content: flex-end; flex-wrap: wrap; width: auto; }
+  }
   .warnbox { background: var(--danger-weak); color: var(--danger); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
   .warnbox div + div { margin-top: 2px; }
   .infobox { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 13px; color: var(--muted); margin-top: 8px; }
@@ -1517,7 +1524,7 @@ function partSelect() {
 function leaveItem(l, opts = {}) {
   const c = conflictsOf(l);
   const past = l.endDate < todayStr();
-  return `<div class="card item ${past ? 'past' : ''}">
+  return `<div class="card item barred ${past ? 'past' : ''}">
     <div class="bar t-${l.type}"></div>
     <div class="body">
       <div class="title">${opts.showName ? esc(nameOf(l.email)) + ' · ' : ''}${l.type} <span class="muted small" style="font-weight:500">${fmtRange(l)} · ${workdays(l)}일</span>
@@ -1584,7 +1591,7 @@ const isOverdue = (t) => t.status !== '완료' && t.endDate < todayStr();
 function taskItem(t) {
   const names = t.assignees.map((e) => esc(nameOf(e))).join(', ');
   const late = isOverdue(t);
-  return `<div class="card item ${t.status === '완료' ? 'past' : ''}">
+  return `<div class="card item barred ${t.status === '완료' ? 'past' : ''}">
     <div class="bar k-${catIdx(t.category)}"></div>
     <div class="body">
       <div class="title"><span class="badge">${esc(t.part)}</span> ${esc(t.title)}${t.series ? ' <span class="muted small" title="반복 일정">↻</span>' : ''}
