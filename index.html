@@ -53,6 +53,9 @@
     font-size: 14px; line-height: 1.45; -webkit-text-size-adjust: 100%;
   }
   button, input, select, textarea { font: inherit; color: inherit; }
+  .kbd-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+  .kbd-table { width: 100%; } .kbd-table td { white-space: normal; } .kbd-table td:first-child { white-space: nowrap; }
+  kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; background: var(--surface); font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--text); }
   .nav-order .no-row { display: flex; align-items: center; gap: 6px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
   .nav-order .no-row.no-cut { border-top: 2px dashed var(--border); }
   .nav-order .no-n { width: 20px; color: var(--muted); font-size: 12px; text-align: right; }
@@ -1591,7 +1594,7 @@ const isOverdue = (t) => t.status !== '완료' && t.endDate < todayStr();
 function taskItem(t) {
   const names = t.assignees.map((e) => esc(nameOf(e))).join(', ');
   const late = isOverdue(t);
-  return `<div class="card item barred ${t.status === '완료' ? 'past' : ''}">
+  return `<div class="card item barred ${t.status === '완료' ? 'past' : ''}"${t.canEdit ? ` data-cid="${t.id}"` : ''}>
     <div class="bar k-${catIdx(t.category)}"></div>
     <div class="body">
       <div class="title"><span class="badge">${esc(t.part)}</span> ${esc(t.title)}${t.series ? ' <span class="muted small" title="반복 일정">↻</span>' : ''}
@@ -1679,7 +1682,7 @@ function workTimeline(list, first) {
       const left = ((s - 1) / days) * 100, width = ((e - s + 1) / days) * 100;
       html += `<div class="tl-row"><div class="tl-label" title="${esc(t.title)}">${(t.absences || []).length ? '⚠ ' : ''}${esc(t.title)}</div>
         <div class="tl-cell" style="grid-column: 2 / -1">
-          <div class="tl-bar k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}" data-act="${t.canEdit ? 'editTask' : 'wday'}" data-v="${t.canEdit ? t.id : t.startDate < mStart ? mStart : t.startDate}"
+          <div class="tl-bar k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}"${t.canEdit ? ` data-cid="${t.id}"` : ''} data-act="${t.canEdit ? 'editTask' : 'wday'}" data-v="${t.canEdit ? t.id : t.startDate < mStart ? mStart : t.startDate}"
             style="left:${left}%;width:${width}%" title="${esc(t.title)} ${fmtRange(t)}">${esc(t.title)}</div></div></div>`;
     });
   });
@@ -1716,7 +1719,7 @@ function viewWork() {
     cells += `<div class="${cls}" data-act="wday" data-v="${ds}">
       <div class="dtop"><span class="dnum">${d.getDate()}</span>${D.holidays[ds] ? `<span class="hname">${esc(D.holidays[ds])}</span>` : ''}</div>
       ${evs.map((e) => `<div class="chip evt" title="${esc(e.title)}${e.time ? ' ' + esc(e.time) : ''}"><span class="w">★</span><span class="nm">${esc(e.title)}</span></div>`).join('')}
-      ${shown.map((t) => `<div class="chip k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}"${canDrag && t.canEdit ? ` draggable="true" data-tid="${t.id}"` : ''} title="[${esc(t.part)}] ${esc(t.title)}${(t.absences || []).length ? ' (담당자 부재)' : ''}${canDrag && t.canEdit ? ' · 끌어서 날짜 옮기기' : ''}">${(t.absences || []).length ? '<span class="w">⚠</span>' : ''}${mobile || ui.workPart ? '' : `<span class="pt">${esc(t.part)}</span>`}<span class="nm">${esc(t.title)}</span></div>`).join('')}
+      ${shown.map((t) => `<div class="chip k-${catIdx(t.category)} ${t.status === '완료' ? 'done' : ''}"${canDrag && t.canEdit ? ` draggable="true" data-tid="${t.id}"` : ''}${t.canEdit ? ` data-cid="${t.id}"` : ''} title="[${esc(t.part)}] ${esc(t.title)}${(t.absences || []).length ? ' (담당자 부재)' : ''}${canDrag && t.canEdit ? ' · 끌어서 날짜 옮기기 · Ctrl(⌘)+클릭 복사' : ''}">${(t.absences || []).length ? '<span class="w">⚠</span>' : ''}${mobile || ui.workPart ? '' : `<span class="pt">${esc(t.part)}</span>`}<span class="nm">${esc(t.title)}</span></div>`).join('')}
       ${items.length > shown.length ? `<div class="more">+${items.length - shown.length}</div>` : ''}
     </div>`;
   }
@@ -2540,6 +2543,7 @@ function openAccount() {
     <div class="content">
       <button class="btn" data-act="guide" style="width:100%;margin-bottom:8px">사용 안내 · 업데이트 내역</button>
       <button class="btn" data-act="navOrder" style="width:100%;margin-bottom:${IS_STANDALONE ? 12 : 8}px">메뉴 순서 바꾸기</button>
+      ${window.matchMedia('(pointer: fine)').matches ? '<button class="btn" data-act="shortcuts" style="width:100%;margin-bottom:8px">단축키 보기</button>' : ''}
       ${IS_STANDALONE ? '' : '<button class="btn" data-act="a2hs" style="width:100%;margin-bottom:12px">홈 화면에 추가하기 (앱처럼 쓰기)</button>'}
       <div class="field" style="margin-top:0"><label>화면 모드 <span class="muted" style="font-weight:400">이 기기에만 적용</span></label>
         <div class="seg">${[['', '시스템 설정 따름'], ['light', '밝게'], ['dark', '어둡게']].map(([v, t]) => `<button type="button" data-act="setTheme" data-v="${v}" class="${themePref() === v ? 'on' : ''}">${t}</button>`).join('')}</div></div>
@@ -2638,6 +2642,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-22', items: [
+    { x: 'PC에서 단축키를 쓸 수 있어요. N 새로 등록 · ←/→ 달 이동 · T 오늘 · 숫자 1~8 메뉴 이동 · Ctrl(⌘)+S 저장 · Ctrl(⌘)+D 또는 업무를 Ctrl(⌘)+클릭하면 복사. 전체 목록은 ? 키나 이름 메뉴의 [단축키 보기]에서 볼 수 있어요.' },
     { x: '업무 수정 창의 [복사]로 같은 내용의 업무를 새로 등록할 수 있어요. 날짜만 바꾸면 돼요 (기간은 그대로 따라가요).' },
   ] },
   { d: '2026-10-21', items: [
@@ -3509,14 +3514,7 @@ document.addEventListener('click', (e) => {
     case 'a2hs': addToHome(); break;
     case 'toCal': openToCal(v); break;
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
-    case 'tab':
-      closeModal(); // 하단 탭바 '더보기' 창에서 고른 경우
-      if (v === ui.tab) { window.scrollTo({ top: 0, behavior: 'smooth' }); break; } // 보고 있는 탭을 다시 누르면 맨 위로
-      if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
-      else ui.tab = v;
-      if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
-      try { localStorage.setItem(TAB_KEY, ui.tab); } catch (e) {}
-      render(); window.scrollTo(0, 0); break;
+    case 'tab': goTab(v); break;
     case 'month': {
       const t0 = new Date();
       ui.month = v === '0' ? new Date(t0.getFullYear(), t0.getMonth(), 1) : new Date(ui.month.getFullYear(), ui.month.getMonth() + Number(v), 1);
@@ -3570,6 +3568,7 @@ document.addEventListener('click', (e) => {
     case 'pickMember': ui.allFilter = { member: v, month: '', warnOnly: false }; render(); window.scrollTo(0, 0); break;
     case 'account': openAccount(); break;
     case 'navOrder': openNavOrder(); break;
+    case 'shortcuts': openShortcuts(); break;
     case 'refresh': refreshData(true); break;
     case 'meal': approveMeal(); break;
     case 'copyAttendance': openAttendance(v); break;
@@ -3612,7 +3611,91 @@ document.addEventListener('change', (e) => {
   }
 });
 
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dismissModal(); });
+// 업무 칩 · 카드를 Ctrl(⌘)+클릭 → 바로 복사 창 (수정 창을 거치지 않음). 다른 클릭 처리보다 먼저(capture)
+document.addEventListener('click', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || screen !== 'app') return;
+  const c = e.target.closest && e.target.closest('[data-cid]');
+  if (!c || !(W.tasks || []).some((t) => t.id === c.dataset.cid)) return;
+  e.preventDefault(); e.stopPropagation();
+  openTaskForm(null, null, c.dataset.cid);
+}, true);
+
+function goTab(v) {
+  closeModal(); // 하단 탭바 '더보기' 창에서 고른 경우
+  if (v === ui.tab) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; } // 보고 있는 탭을 다시 누르면 맨 위로
+  if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
+  else ui.tab = v;
+  if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
+  try { localStorage.setItem(TAB_KEY, ui.tab); } catch (e) {}
+  render(); window.scrollTo(0, 0);
+}
+
+/*
+ * 키보드 단축키 (PC). e.code(키 위치)로 판단해서 대소문자 · 한글 입력 상태와 상관없이 동작.
+ * 입력칸에 쓰는 중에는 저장(Ctrl/⌘+S) · 복사(Ctrl/⌘+D) · Esc만.
+ */
+const SHORTCUTS = [
+  ['N', '새로 등록 (캘린더·내 일정 → 휴가, 업무 일정 → 업무, 중요 일정 → 중요 일정)'],
+  ['← / →', '이전 · 다음 달 (공휴일은 이전 · 다음 해)'],
+  ['T', '오늘로'],
+  ['1 ~ 8', '메뉴 이동 (내 메뉴 순서 기준)'],
+  ['R', '최신 내용 불러오기'],
+  ['/', '이름 검색 (전체 일정 탭으로 이동)'],
+  ['Ctrl(⌘) + S', '열린 창 저장 · 등록'],
+  ['Ctrl(⌘) + D', '업무 수정 창에서 복사'],
+  ['Ctrl(⌘) + 클릭', '업무 캘린더 칸 · 업무 카드를 바로 복사'],
+  ['?', '단축키 목록'],
+  ['Esc', '창 닫기'],
+];
+function openShortcuts() {
+  openModal(`<header><h3>단축키 <span class="muted small">PC</span></h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content"><table class="kbd-table"><tbody>${SHORTCUTS.map(([k, t]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(t)}</td></tr>`).join('')}</tbody></table>
+      <p class="muted small">입력칸에 글을 쓰는 중에는 Ctrl(⌘) + S · Ctrl(⌘) + D · Esc만 동작해요. 한글 입력 상태여도 같은 자리의 키로 동작해요.</p></div>`);
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') return dismissModal();
+  if (screen !== 'app' || e.isComposing) return;
+  const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+  if (mod && e.code === 'KeyS') { // 열린 창의 저장 · 등록 버튼 (브라우저 '페이지 저장' 대신)
+    if (!$modal) return;
+    e.preventDefault();
+    const b = $modal.querySelector('[data-save]') || $modal.querySelector('footer .btn.primary, button[type=submit].primary');
+    if (b && !b.disabled) b.click();
+    return;
+  }
+  if (mod && e.code === 'KeyD') { // 업무 수정 창 → 복사 (브라우저 '북마크' 대신)
+    const b = $modal && $modal.querySelector('[data-copy]');
+    if (b) { e.preventDefault(); b.click(); }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const tg = e.target;
+  if (tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))) return; // 글 쓰는 중
+  if ($modal) return;
+  const click = (sel) => { const b = document.querySelector(sel); if (b) { b.click(); return true; } return false; };
+  const c = e.code;
+  if (c === 'KeyN') {
+    const want = { work: 'newTask', events: 'newEvent', holidays: 'newHoliday', members: 'newUser' }[ui.tab] || 'newLeave';
+    if (!click(`[data-act="${want}"]`) && want === 'newLeave') openLeaveForm(null);
+  } else if (c === 'ArrowLeft' || c === 'ArrowRight') {
+    const d = c === 'ArrowLeft' ? '-1' : '1';
+    if (!click(`main [data-act="month"][data-v="${d}"], main [data-act="wmonth"][data-v="${d}"], main [data-act="holYear"][data-v="${d}"]`)) return;
+  } else if (c === 'KeyT') {
+    click('main [data-act="month"][data-v="0"], main [data-act="wmonth"][data-v="0"]');
+  } else if (/^Digit[1-8]$/.test(c)) {
+    const t = myTabs()[+c.slice(5) - 1];
+    if (t) goTab(t[0]);
+  } else if (c === 'KeyR') {
+    click('[data-act="refresh"]');
+  } else if (c === 'Slash' && e.shiftKey) {
+    openShortcuts();
+  } else if (c === 'Slash') {
+    if (!document.querySelector('.people-search') && myTabs().some((t) => t[0] === 'all')) goTab('all'); // 이름 검색은 전체 일정 탭에 있음
+    const s = document.querySelector('.people-search');
+    if (s) s.focus(); else return;
+  } else return;
+  e.preventDefault();
+});
 // 이름 검색: 목록에서 고르면 바로 이동 (엔터 없이)
 document.addEventListener('input', (e) => { const t = e.target; if (t && t.dataset && t.dataset.act === 'psearch') pickBySearch(t.value, true); });
 
