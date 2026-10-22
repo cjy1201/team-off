@@ -1778,16 +1778,19 @@ function renderAssignees(box, list, part, onChange, max = MAX_ASSIGNEES) {
   if (sel) sel.onchange = () => { if (sel.value) list.push(sel.value); again(); };
 }
 
-function openTaskForm(id, date) {
+/** copyId: 그 업무 내용으로 채운 새 등록 창 (수정 창의 [복사]) — 상태는 '예정', 반복 묶음은 이어지지 않음 */
+function openTaskForm(id, date, copyId) {
   const ex = id ? W.tasks.find((t) => t.id === id) : null;
+  const src = !ex && copyId ? W.tasks.find((t) => t.id === copyId) : null;
   const myPart = S.me.part || '';
   if (!ex && !isAdmin() && !myPart) return toast('파트가 지정되지 않은 계정입니다. PM에게 파트 지정을 요청하세요.', true);
   const d0 = date || todayStr();
   const mine = !ex || ex.createdBy === S.me.email; // '나만 보기'는 등록한 사람만 설정 가능
   const f = ex ? Object.assign({}, ex, { assignees: ex.assignees.slice() })
+    : src ? Object.assign({}, src, { id: '', status: '예정', series: '', part: isAdmin() ? src.part : myPart, assignees: src.assignees.slice() })
     : { id: '', part: isAdmin() ? ui.workPart || myPart || 'PM' : myPart, title: '', category: '개발', startDate: d0, endDate: d0, time: '', assignees: [S.me.email], status: '예정', visibility: 'all', memo: '' };
   const m = openModal(`
-    <header><h3>${ex ? '업무 일정 수정' : '업무 일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <header><h3>${ex ? '업무 일정 수정' : src ? '업무 일정 복사' : '업무 일정 등록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       <div class="field"><label>파트 <span class="req">*</span></label>${isAdmin() /* PM은 수정할 때도 파트를 바꿀 수 있음 (파트원 · PL은 자기 파트 고정) */
         ? `<select name="part"><option value="">— 파트 선택 —</option>${TASK_PARTS.map((p) => `<option value="${p}" ${f.part === p ? 'selected' : ''}>${p === '전체' ? '전체 파트 (공통)' : p}</option>`).join('')}</select>`
@@ -1826,9 +1829,10 @@ function openTaskForm(id, date) {
       ${isAdmin() && !ex ? `<label class="toggle" style="color:var(--text)"><input type="checkbox" name="asEvent">
         <span><b style="color:var(--evt)">★ 중요 일정으로 등록</b> <span class="muted small">— 업무 대신 중요 일정으로 저장돼서 모든 직원에게 보여요 (제목 · 날짜 · 시간 · 담당자 · 메모)</span></span></label>` : ''}
     </div>
-    <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span>
+    <footer>${ex ? '<button class="btn danger" data-del>삭제</button><button class="btn" data-copy title="이 내용으로 새 업무 등록">복사</button>' : ''}<span class="spacer"></span>
       <button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '등록'}</button></footer>`);
   const q = (sel) => m.querySelector(sel);
+  if (ex) q('[data-copy]').onclick = () => openTaskForm(null, null, ex.id);
   const box = q('[data-assignees]');
   // 담당자·기간이 바뀌면 부재 여부를 서버에 확인 (휴가 공개 규칙 안에서만)
   let seq = 0, timer = null;
@@ -1856,7 +1860,13 @@ function openTaskForm(id, date) {
   syncVis();
   if (q('select[name=part]')) q('select[name=part]').onchange = (e) => { f.part = e.target.value; renderA(); };
   const sd = q('[name=startDate]'), ed = q('[name=endDate]');
-  sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; checkAbsent(); };
+  let prevStart = sd.value;
+  sd.onchange = () => {
+    // 복사본: 시작일을 옮기면 종료일도 같은 기간만큼 따라감
+    if (src && prevStart && ed.value && sd.value) ed.value = ymd(addDays(parse(ed.value), Math.round((parse(sd.value) - parse(prevStart)) / 864e5)));
+    if (!ed.value || ed.value < sd.value) ed.value = sd.value;
+    ed.min = sd.value; prevStart = sd.value; checkAbsent();
+  };
   ed.onchange = checkAbsent;
   if (ex) q('[data-del]').onclick = () => removeTask(ex.id);
   // 반복 일정 수정 범위 — 날짜·상태는 이 일정에만, 제목·분류·담당자·메모 등은 고른 범위에 함께 반영
@@ -2627,6 +2637,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-10-22', items: [
+    { x: '업무 수정 창의 [복사]로 같은 내용의 업무를 새로 등록할 수 있어요. 날짜만 바꾸면 돼요 (기간은 그대로 따라가요).' },
+  ] },
   { d: '2026-10-21', items: [
     { r: 'viewer', x: '휴가 사용 현황에 DS직원이 아닌 직원이 모두 보여요 (휴가 부여 일수가 없는 사람도).' },
   ] },
