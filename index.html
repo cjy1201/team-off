@@ -949,6 +949,17 @@ const Mock = (() => {
       taskNews(u, ex, row); persist();
       return this.getTasks(token);
     },
+    extendTaskSeries(token, id, rp) { // 반복 연장 (서버와 같은 규칙)
+      const u = auth(token);
+      const t = (db.tasks || []).find((x) => x.id === id);
+      need(t && t.series, '반복 일정이 아닙니다.');
+      need(t.visibility === 'private' ? t.createdBy === u.email : u.role === 'pm' || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part), '작성자, 해당 파트 PL, PM만 수정할 수 있습니다.');
+      const hol = {}; db.holidays.forEach((h) => (hol[h.date] = true));
+      const { last, dates } = seriesExtendDates(db.tasks.filter((x) => x.series === t.series), rp, hol);
+      db.tasks = db.tasks.concat(dates.map(([s1, e1], k) => ({ ...last, id: 'T' + Date.now() + '_x' + k, startDate: s1, endDate: e1, status: '예정' })));
+      log(u, 'task', '반복 연장', '', `[${last.part}] ${last.title} · ${dates.length}회 추가`); persist();
+      return this.getTasks(token);
+    },
     deleteTask(token, id, scope) {
       const u = auth(token);
       const t = (db.tasks || []).find((x) => x.id === id);
@@ -1820,7 +1831,7 @@ function openTaskForm(id, date, copyId) {
         <button type="button" data-vis="assignees" class="${f.visibility === 'assignees' ? 'on' : ''}">담당자만</button>
         ${mine ? `<button type="button" data-vis="private" class="${f.visibility === 'private' ? 'on' : ''}">나만 보기</button>` : ''}</div>
         <div class="muted small" data-vishelp style="margin-top:4px"></div></div>
-      ${ex ? (ex.series ? `<div class="field"><label>↻ 반복 일정 · 수정 범위</label>
+      ${ex ? (ex.series ? `<div class="field"><label class="label-row"><span>↻ 반복 일정 · 수정 범위</span><button type="button" class="btn ghost sm" data-extend>+ 반복 연장</button></label>
         <div class="seg" data-scopes><button type="button" data-scope="" class="on">이 일정만</button><button type="button" data-scope="after">이후 모두 (${W.tasks.filter((x) => x.series === ex.series && x.startDate >= ex.startDate).length}건)</button><button type="button" data-scope="all">전체 (${W.tasks.filter((x) => x.series === ex.series).length}건)</button></div>
         <div class="muted small" data-scopehelp style="margin-top:4px">이 날짜 일정만 바뀌어요.</div></div>` : '') : `<div class="field"><label>반복 <span class="muted" style="font-weight:400">선택</span></label>
         <select name="repFreq"><option value="">반복 안 함</option><option value="weekday">매일 (평일)</option><option value="weekly">매주</option><option value="biweekly">격주</option><option value="monthly">매월 (같은 날짜)</option></select>
@@ -1840,6 +1851,7 @@ function openTaskForm(id, date, copyId) {
       <button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '등록'}</button></footer>`);
   const q = (sel) => m.querySelector(sel);
   if (ex) q('[data-copy]').onclick = () => openTaskForm(null, null, ex.id);
+  if (q('[data-extend]')) q('[data-extend]').onclick = () => openSeriesExtend(ex.id);
   const box = q('[data-assignees]');
   // 담당자·기간이 바뀌면 부재 여부를 서버에 확인 (휴가 공개 규칙 안에서만)
   let seq = 0, timer = null;
@@ -1946,15 +1958,15 @@ async function removeTask(id) {
 }
 
 /** 반복 날짜 (서버 Code.gs repeatDates_와 같은 규칙 — 등록 화면 미리보기 · 미리보기 서버용) */
-function repeatDates(startDate, endDate, rep, holidaySet) {
+function repeatDates(startDate, endDate, rep, holidaySet, after) {
   const DAY = 864e5;
   const toT = (ds) => Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10));
   const toS = (t) => new Date(t).toISOString().slice(0, 10);
   const hol = holidaySet || D.holidays || {};
   const until = rep.until || '';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < startDate) throw new Error('반복 종료일을 확인하세요.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < startDate || (after && until <= after)) throw new Error('반복 종료일을 확인하세요.');
   const s0 = toT(startDate), u = toT(until), span = toT(endDate) - s0;
-  if (u - s0 > 366 * DAY) throw new Error('반복은 최대 1년까지 등록할 수 있습니다.');
+  if (u - (after ? toT(after) : s0) > 366 * DAY) throw new Error('반복은 최대 1년까지 등록할 수 있습니다.');
   const days = (rep.days || []).length ? rep.days : [new Date(s0).getUTCDay()];
   const week0 = s0 - new Date(s0).getUTCDay() * DAY;
   const mode = ['skip', 'next', 'prev', 'keep'].includes(rep.offDay) ? rep.offDay : rep.skipHolidays ? 'skip' : 'keep';
@@ -1978,11 +1990,105 @@ function repeatDates(startDate, endDate, rep, holidaySet) {
     }
     if (seen[at]) continue;
     seen[at] = true;
+    if (after && toS(at) <= after) continue;
     out.push([toS(at), toS(at + span)]);
     if (out.length > 100) throw new Error('반복은 한 번에 100회까지 등록할 수 있습니다. 종료일을 앞당겨 주세요.');
   }
   if (!out.length) throw new Error('반복 조건에 맞는 날짜가 없습니다.');
   return out;
+}
+
+/** 반복 연장 날짜 (서버 extendTaskSeries와 같은 규칙): 매월이면 가장 많이 쓰인 날짜의 회차, 그 밖에는 첫 회차를 기준으로 마지막 회차 다음부터 */
+function seriesExtendDates(list, rep, holidaySet) {
+  const sorted = list.slice().sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0));
+  const last = sorted[sorted.length - 1];
+  let base = sorted[0];
+  if (rep.freq === 'monthly') {
+    const cnt = {};
+    sorted.forEach((x) => (cnt[x.startDate.slice(8)] = (cnt[x.startDate.slice(8)] || 0) + 1));
+    const day = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a] || (a < b ? -1 : 1))[0];
+    base = sorted.find((x) => x.startDate.slice(8) === day);
+  }
+  const span = Math.round((parse(last.endDate) - parse(last.startDate)) / 864e5);
+  const have = new Set(sorted.map((x) => x.startDate));
+  const out = repeatDates(base.startDate, ymd(addDays(parse(base.startDate), span)), rep, holidaySet, last.startDate).filter(([s1]) => !have.has(s1));
+  if (!out.length) throw new Error('반복 조건에 맞는 날짜가 없습니다.');
+  return { last, dates: out };
+}
+
+/** 등록된 회차들로 반복 규칙 추정 (반복 연장 창의 기본값 — 사용자가 고칠 수 있음) */
+function guessRepeat(list) {
+  const ds = [...new Set(list.map((x) => x.startDate))].sort();
+  const dows = ds.map((d) => parse(d).getDay());
+  const gaps = ds.slice(1).map((d, i) => Math.round((parse(d) - parse(ds[i])) / 864e5));
+  const minGap = gaps.length ? Math.min(...gaps) : 7;
+  const cnt = {};
+  dows.forEach((w) => (cnt[w] = (cnt[w] || 0) + 1));
+  const days = Object.keys(cnt).map(Number).filter((w) => ds.length < 4 || cnt[w] >= 2).sort();
+  let freq = 'weekly';
+  if (gaps.length && Math.max(...gaps) <= 4 && new Set(dows).size >= 3 && dows.every((w) => w >= 1 && w <= 5)) freq = 'weekday';
+  else if (minGap >= 25) freq = 'monthly';
+  else if (minGap >= 14) freq = 'biweekly';
+  let offDay = 'skip';
+  if (freq === 'monthly') {
+    const dc = {};
+    ds.forEach((d) => (dc[d.slice(8)] = (dc[d.slice(8)] || 0) + 1));
+    const main = +Object.keys(dc).sort((a, b) => dc[b] - dc[a])[0];
+    const moved = ds.map((d) => +d.slice(8)).filter((x) => x !== main);
+    if (moved.length) offDay = moved.some((x) => x > main || main - x > 20) ? 'next' : 'prev';
+  }
+  return { freq, days: days.length ? days : [dows[dows.length - 1]], offDay };
+}
+
+function openSeriesExtend(id) {
+  const t = W.tasks.find((x) => x.id === id);
+  if (!t || !t.series) return;
+  const list = W.tasks.filter((x) => x.series === t.series);
+  const g = guessRepeat(list);
+  const last = list.reduce((a, b) => (b.startDate > a.startDate ? b : a));
+  const rep = { freq: g.freq, days: g.days, offDay: g.offDay, until: ymd(addDays(parse(last.startDate), 91)) };
+  const m = openModal(`<header><h3>반복 연장</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <p style="margin-top:0">[${esc(last.part)}] ${esc(last.title)}<br><span class="muted small">지금 ${list.length}회 · 마지막 ${fmtShort(last.startDate)}</span></p>
+      <div class="field"><label>반복 방식</label>
+        <select name="xFreq"><option value="weekday">매일 (평일)</option><option value="weekly">매주</option><option value="biweekly">격주</option><option value="monthly">매월 (같은 날짜)</option></select>
+        <div class="seg" data-xdays style="margin-top:8px">${['일', '월', '화', '수', '목', '금', '토'].map((w, i) => `<button type="button" data-xd="${i}">${w}</button>`).join('')}</div></div>
+      <div class="field"><label>새 반복 종료일</label><input type="date" name="xUntil" value="${rep.until}" min="${ymd(addDays(parse(last.startDate), 1))}">
+        <div class="seg" style="margin-top:8px">${[[3, '3개월'], [6, '6개월'], [12, '1년']].map(([n, l]) => `<button type="button" data-xm="${n}">+${l}</button>`).join('')}</div></div>
+      <div class="field"><label>공휴일<span data-xwk> · 주말</span>에 걸리면</label>
+        <select name="xOff"><option value="skip">건너뛰기</option><option value="next">다음 영업일로</option><option value="prev">이전 영업일로</option><option value="keep">그대로 두기</option></select></div>
+      <div class="muted small">내용(제목·분류·시간·담당자·공개 범위·메모)은 마지막 회차와 같게, 상태는 '예정'으로 만들어요.</div>
+      <div class="small" data-xinfo style="margin-top:8px"></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>연장</button></footer>`);
+  const q = (sel) => m.querySelector(sel);
+  q('[name=xFreq]').value = rep.freq; q('[name=xOff]').value = rep.offDay;
+  let n = 0;
+  const paint = () => {
+    q('[data-xdays]').style.display = rep.freq === 'weekly' || rep.freq === 'biweekly' ? '' : 'none';
+    q('[data-xwk]').style.display = rep.freq === 'monthly' ? '' : 'none';
+    m.querySelectorAll('[data-xd]').forEach((b) => b.classList.toggle('on', rep.days.includes(+b.dataset.xd)));
+    rep.until = q('[name=xUntil]').value; rep.offDay = q('[name=xOff]').value;
+    try {
+      const r = seriesExtendDates(list, rep);
+      n = r.dates.length;
+      q('[data-xinfo]').innerHTML = `<b>${n}회</b> 추가돼요 (${fmtShort(r.dates[0][0])} ~ ${fmtShort(r.dates[n - 1][0])})`;
+    } catch (e) { n = 0; q('[data-xinfo]').innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
+    q('[data-save]').disabled = !n;
+  };
+  q('[name=xFreq]').onchange = (e) => { rep.freq = e.target.value; paint(); };
+  q('[name=xUntil]').onchange = paint; q('[name=xOff]').onchange = paint;
+  m.querySelectorAll('[data-xd]').forEach((b) => (b.onclick = () => {
+    const d = +b.dataset.xd;
+    rep.days = rep.days.includes(d) ? rep.days.filter((x) => x !== d) : rep.days.concat([d]);
+    paint();
+  }));
+  m.querySelectorAll('[data-xm]').forEach((b) => (b.onclick = () => {
+    const d = parse(last.startDate); d.setMonth(d.getMonth() + +b.dataset.xm);
+    q('[name=xUntil]').value = ymd(d); paint();
+  }));
+  paint();
+  q('[data-save]').onclick = () => n && runTasks(api('extendTaskSeries', id, { freq: rep.freq, days: rep.days, until: rep.until, offDay: rep.offDay }), `반복 업무 ${n}회를 이어서 등록했습니다.`);
 }
 
 /* ---------- 중요 일정 (등록·수정은 PM, 보기는 전체) ---------- */
@@ -2645,6 +2751,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-10-30', items: [
+    { x: '반복 업무를 연장할 수 있어요. 반복 업무 수정 창의 [+ 반복 연장]에서 새 종료일만 고르면 마지막 회차 다음부터 같은 반복으로 이어서 등록돼요.' },
+  ] },
   { d: '2026-10-22', items: [
     { x: '업무 캘린더와 날짜 상세의 업무가 시간순으로 보여요 (시간 없는 업무가 먼저, 같은 시간은 등록순).' },
     { x: "업무 일정 아래 목록에서 '지난 업무 숨기기'를 켜면 종료일이 지난 업무가 빠져요 (이 기기에 기억돼요)." },
