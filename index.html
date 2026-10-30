@@ -391,6 +391,9 @@ const SHORT = { // 달력 칸에 표시하는 짧은 이름
   '연차': '연차', '오전반차': '오전', '오후반차': '오후', '반반차': '반반', '병가': '병가', '연수/교육': '교육', '기타': '기타' };
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const PARTS = ['기획', 'QA', '개발', '퍼블', 'NP', '디자인'];
+const CROWD_PERCENT = 20; // 서버와 같게: 총원(테스터 제외) 중 이 비율 이상이 같은 날 부재하면 휴가 사유 필수
+/** 테스터 계정 (이름에 '테스터') — 총원 · 파트 인원 · 부재 비율에서 뺀다 (서버 isTester_와 같은 규칙) */
+const isTester = (u) => String((u && u.name) || '').includes('테스터');
 const TASK_PARTS = ['전체', ...PARTS, 'PM']; // 업무 일정의 파트 ('전체' · 'PM' 업무는 PM만 등록. '전체'는 모든 파트 공통 업무)
 const MAX_SUBS = 3;
 const ROLE_TEXT = { pm: 'PM', pl: 'PL', member: '파트원' };
@@ -768,6 +771,23 @@ const Mock = (() => {
     return l;
   };
   const dupOf = (l) => db.leaves.find((x) => x.id !== l.id && x.email === l.email && overlaps(x, l));
+  const crowdedOf = (l) => { // 서버 crowdedDays_와 같은 규칙
+    const people = db.users.filter((u) => !isTester(u));
+    const testers = new Set(db.users.filter(isTester).map((u) => u.email));
+    if (!people.length || testers.has(l.email)) return [];
+    const min = Math.ceil((people.length * CROWD_PERCENT) / 100);
+    const off = new Set(db.holidays.map((h) => h.date));
+    const out = [];
+    for (let d = parse(l.startDate); ymd(d) <= l.endDate; d = addDays(d, 1)) {
+      const ds = ymd(d);
+      if (d.getDay() === 0 || d.getDay() === 6 || off.has(ds)) continue;
+      const day = { startDate: ds, endDate: ds, type: l.type };
+      const n = new Set(db.leaves.filter((m) => m.id !== l.id && m.email !== l.email && !testers.has(m.email) && overlaps(day, m)).map((m) => m.email)).size + 1;
+      if (n >= min) out.push(`${fmtRange(day)} 부재 ${n}명 (총원 ${people.length}명의 ${Math.round((n * 100) / people.length)}%)`);
+    }
+    return out;
+  };
+  const reasonNeeded = (l) => { const w = l.substitutes.length ? conflictsOf(l) : [], c = crowdedOf(l); return { w, c, need: l.endDate >= todayStr() && (w.length > 0 || c.length > 0) }; };
   const temp = () => Math.random().toString(36).slice(2, 10);
   // 주의: Apps Script가 배포할 때 JS 주석을 지우면서 문자열 속 '//'도 주석으로 잘라낸다. 이 파일 JS 문자열에 '//'(URL 등)를 넣지 말 것
   const PREVIEW_URL = '(웹앱 주소)';
@@ -806,8 +826,8 @@ const Mock = (() => {
       const t = temp(); Object.assign(u, { password: t, mustChange: true }); return result(a, { tempPassword: t, email, appUrl: PREVIEW_URL });
     },
     checkLeave(token, input) {
-      const u = auth(token); const l = normalize(u, input, null); const d = dupOf(l);
-      return { duplicate: d ? `이미 ${fmtRange(d)} ${d.type} 일정이 있어 등록할 수 없습니다.` : '', warnings: l.substitutes.length ? conflictsOf(l) : [] };
+      const u = auth(token); const l = normalize(u, input, null); const d = dupOf(l); const r = reasonNeeded(l);
+      return { duplicate: d ? `이미 ${fmtRange(d)} ${d.type} 일정이 있어 등록할 수 없습니다.` : '', warnings: r.w, crowded: r.c, reasonRequired: r.need };
     },
     saveLeave(token, input) {
       const u = auth(token);
@@ -820,6 +840,7 @@ const Mock = (() => {
       need(l.substitutes.length <= MAX_SUBS, `대직자는 최대 ${MAX_SUBS}명까지 지정할 수 있습니다.`);
       need(!l.substitutes.includes(l.email), '본인을 대직자로 지정할 수 없습니다.');
       need(!dupOf(l), '이미 등록된 일정과 겹칩니다.');
+      need((input.memo || '').trim() || !reasonNeeded(l).need, `대직자와 일정이 겹치거나 총원의 ${CROWD_PERCENT}% 이상이 부재하는 날이라 사유를 꼭 적어야 합니다.`);
       const row = { ...l, memo: input.memo || '', updatedAt: new Date().toISOString() };
       const old = ex ? { ...ex } : null;
       if (ex) Object.assign(ex, row); else db.leaves.push({ ...row, id: 'L' + Date.now(), createdAt: row.updatedAt });
@@ -2486,6 +2507,8 @@ function viewHistory() {
 /* ---------- 팀원 관리 (관리자) ---------- */
 function viewMembers() {
   const byName = (a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'pl' ? -1 : 1);
+  const counted = (list) => list.filter((u) => !isTester(u)).length; // 인원수는 테스터 제외
+  const testers = S.users.filter(isTester).length;
   const groups = [['PM (관리자)', S.users.filter((u) => u.role === 'pm')]]
     .concat(PARTS.map((p) => [`${p} 파트`, S.users.filter((u) => u.role !== 'pm' && u.part === p).sort(byName)]))
     .concat([['파트 미지정', S.users.filter((u) => u.role !== 'pm' && !PARTS.includes(u.part))]])
@@ -2501,14 +2524,14 @@ function viewMembers() {
           <button class="btn sm danger" data-act="delUser" data-v="${esc(u.email)}">삭제</button>` : ''}</div>
       </div>`;
   return `
-    <div class="section-title" style="margin-top:4px"><span>팀원 ${S.users.length}명</span>
+    <div class="section-title" style="margin-top:4px"><span>총원 ${counted(S.users)}명${testers ? ` <span class="muted small">(테스터 ${testers}명 제외)</span>` : ''}</span>
       <span style="display:flex;gap:6px"><button class="btn" data-act="bulkUsers">일괄 등록</button>
       <button class="btn primary" data-act="newUser">+ 팀원 추가</button></span></div>
     <div class="infobox" style="margin:0 0 4px">팀원을 추가하면 <b>임시 비밀번호</b>가 발급됩니다. 사이트 주소·이메일·임시 비밀번호를 전달하면 첫 로그인 때 본인 비밀번호로 바꾸게 됩니다.<br>
       <b>PM</b> 전체 일정·관리 메뉴 &nbsp;·&nbsp; <b>PL</b> 전체 직원 일정 조회 &nbsp;·&nbsp; <b>파트원</b> 같은 파트 일정 조회 &nbsp;(PL·파트원은 본인 일정만 수정)<br>
       <span class="muted small"><b>DS직원</b>을 체크한 사람에게 상단 식권(PAYCO) 승인 버튼이 보여요. 현재 DS직원 ${S.users.filter((u) => u.ds).length}명.</span></div>
     ${backupBox()}
-    ${groups.map(([title, list]) => `<div class="section-title">${esc(title)} <span class="muted small">${list.length}명</span></div><div class="list">${list.map(row).join('')}</div>`).join('')}`;
+    ${groups.map(([title, list]) => `<div class="section-title">${esc(title)} <span class="muted small">${counted(list)}명</span></div><div class="list">${list.map(row).join('')}</div>`).join('')}`;
 }
 
 /** 마지막 백업 시각 (DB → 스프레드시트, 1시간마다). 3시간 넘게 없으면 경고 */
@@ -2752,6 +2775,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-10-30', items: [
+    { x: '휴가가 대직자 일정과 겹치거나, 그날 부재 인원이 총원(테스터 제외)의 20% 이상이 되면 사유를 꼭 적어야 등록돼요. 등록 창에서 메모 칸이 \'사유 *\'로 바뀌어요.' },
     { x: '반복 업무를 연장할 수 있어요. 반복 업무 수정 창의 [+ 반복 연장]에서 새 종료일만 고르면 마지막 회차 다음부터 같은 반복으로 이어서 등록돼요.' },
   ] },
   { d: '2026-10-22', items: [
@@ -3052,7 +3076,7 @@ function openLeaveForm(id, date, restore) {
       </div>
       <div class="field"><label>대직자 <span class="req">*</span> <span class="muted" style="font-weight:400">최대 ${MAX_SUBS}명 · 한 명이라도 같은 날 부재면 경고</span></label><div data-subs></div>
         <label class="toggle" data-defwrap style="margin-top:4px"><input type="checkbox" data-savedefault> <span data-deflabel></span></label></div>
-      <div class="field"><label>메모</label><input name="memo" maxlength="200" placeholder="선택 입력 (예: 병원, 교육)" value="${esc(f.memo)}"></div>
+      <div class="field"><label data-memolabel>메모</label><input name="memo" maxlength="200" placeholder="선택 입력 (예: 병원, 교육)" value="${esc(f.memo)}"></div>
       <div data-days></div><div data-check></div>
     </div>
     <footer>
@@ -3062,6 +3086,11 @@ function openLeaveForm(id, date, restore) {
 
   const q = (s) => m.querySelector(s);
   const payload = () => ({ id: f.id, email: f.email, type: f.type, startDate: f.startDate, endDate: f.endDate, substitutes: chosen(), memo: f.memo });
+  // 대직 겹침 · 부재 인원 많음 → 메모가 '사유 (필수)'로 바뀜
+  const setReason = (on) => {
+    q('[data-memolabel]').innerHTML = on ? '사유 <span class="req">*</span>' : '메모';
+    q('[name=memo]').placeholder = on ? '필수 입력 (예: 사전 협의 완료, 가족 행사)' : '선택 입력 (예: 병원, 교육)';
+  };
 
   // 대직자 겹침은 서버가 판단 (팀원은 다른 사람 일정을 받지 않으므로)
   let seq = 0, timer = null;
@@ -3072,9 +3101,13 @@ function openLeaveForm(id, date, restore) {
     timer = setTimeout(() => {
       api('checkLeave', payload()).then((r) => {
         if (my !== seq || !$modal || $modal !== m) return;
+        const crowd = r.crowded || [];
+        setReason(!!r.reasonRequired);
         q('[data-check]').innerHTML =
           (r.duplicate ? `<div class="warnbox">${esc(r.duplicate)}</div>` : '') +
           (r.warnings.length ? `<div class="warnbox"><b>⚠ 대직자와 일정이 겹칩니다</b>${r.warnings.map((w) => `<div>· ${esc(w)}</div>`).join('')}</div>` : '') +
+          (crowd.length ? `<div class="warnbox"><b>⚠ 총원의 ${CROWD_PERCENT}% 이상이 부재합니다</b>${crowd.slice(0, 5).map((w) => `<div>· ${esc(w)}</div>`).join('')}${crowd.length > 5 ? `<div>· 외 ${crowd.length - 5}일</div>` : ''}</div>` : '') +
+          (r.reasonRequired ? `<div class="warnbox"><b>사유를 꼭 적어 주세요.</b> 위 내용 때문에 사유 없이는 저장되지 않아요.</div>` : '') +
           (!r.duplicate && !r.warnings.length && chosen().length ? `<div class="infobox">✓ 대직자${chosen().length > 1 ? ' 모두' : ''} 일정과 겹치지 않습니다.</div>` : '');
       }).catch(handleError);
     }, 250);
@@ -3131,6 +3164,10 @@ function openLeaveForm(id, date, restore) {
     try { r = await api('checkLeave', p); } catch (e) { loading(false); return handleError(e); }
     loading(false);
     if (r.duplicate) return toast(r.duplicate, true);
+    if (r.reasonRequired && !(f.memo || '').trim()) {
+      setReason(true); q('[name=memo]').focus();
+      return toast(`대직자와 일정이 겹치거나 총원의 ${CROWD_PERCENT}% 이상이 부재하는 날이라 사유를 꼭 적어야 합니다.`, true);
+    }
     if (r.warnings.length) {
       const ok = await confirmBox('대직자와 일정이 겹칩니다', `<div class="warnbox" style="margin-top:0">${r.warnings.map((w) => `<div>⚠ ${esc(w)}</div>`).join('')}</div>
         <p class="muted small">그래도 저장하면 캘린더에 경고 표시가 남습니다. 대직자를 바꾸는 것을 권장합니다.</p>`, '그래도 저장');
