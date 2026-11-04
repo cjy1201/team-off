@@ -946,7 +946,7 @@ const Mock = (() => {
       const t = r.targets || { mode: 'all' };
       const list = t.mode === 'people' ? (t.emails || []).filter((e) => db.users.some((u) => u.email === e))
         : db.users.filter((u) => !isTester(u) && (t.mode !== 'parts' || (t.parts || []).includes(u.part || (u.role === 'pm' ? 'PM' : '')))).map((u) => u.email);
-      return list.filter((e) => e !== r.createdBy);
+      return t.mode === 'all' ? list.filter((e) => e !== r.createdBy) : list;
     },
     _reqOpen: (r) => r.status !== 'closed' && todayStr() <= r.deadline,
     _reqState(u) {
@@ -2867,15 +2867,15 @@ function openRequestForm(id, tplKey) {
   m.querySelectorAll('[data-tpl]').forEach((b) => (b.onclick = () => openRequestForm(null, b.dataset.tpl)));
   // 대상
   const peopleBox = q('[data-tpeople]');
-  const nonTester = S.users.filter((u) => !isTester(u) && u.email !== S.me.email);
+  const nonTester = S.users.filter((u) => !isTester(u));
   const paintTargets = () => {
     const t = f.targets;
     m.querySelectorAll('[data-tm]').forEach((b) => b.classList.toggle('on', b.dataset.tm === t.mode));
     q('[data-tparts]').style.display = t.mode === 'parts' ? '' : 'none';
     peopleBox.style.display = t.mode === 'people' ? '' : 'none';
     m.querySelectorAll('[data-tp]').forEach((b) => b.classList.toggle('on', t.parts.includes(b.dataset.tp)));
-    const n = t.mode === 'all' ? nonTester.length : t.mode === 'parts' ? nonTester.filter((u) => t.parts.includes(u.part || (u.role === 'pm' ? 'PM' : ''))).length : t.emails.length;
-    q('[data-tinfo]').textContent = `대상 ${n}명${t.mode !== 'people' ? ' (테스터 · 나 제외)' : ''}`;
+    const n = t.mode === 'all' ? nonTester.filter((u) => u.email !== S.me.email).length : t.mode === 'parts' ? nonTester.filter((u) => t.parts.includes(u.part || (u.role === 'pm' ? 'PM' : ''))).length : t.emails.length;
+    q('[data-tinfo]').textContent = `대상 ${n}명${t.mode === 'all' ? ' (테스터 · 나 제외)' : t.mode === 'parts' ? ' (테스터 제외)' : ''}`;
   };
   m.querySelectorAll('[data-tm]').forEach((b) => (b.onclick = () => { f.targets.mode = b.dataset.tm; paintTargets(); }));
   m.querySelectorAll('[data-tp]').forEach((b) => (b.onclick = () => {
