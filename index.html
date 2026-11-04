@@ -741,6 +741,15 @@ const Mock = (() => {
     });
     return out;
   };
+  const conflictDaysOf = (l) => { // 서버 conflictDays_와 같은 규칙
+    const days = new Set();
+    db.leaves.forEach((m) => {
+      if (m.id === l.id || !overlaps(l, m) || !(l.substitutes.includes(m.email) || m.substitutes.includes(l.email))) return;
+      const s = l.startDate > m.startDate ? l.startDate : m.startDate, e = l.endDate < m.endDate ? l.endDate : m.endDate;
+      for (let d = parse(s); ymd(d) <= e; d = addDays(d, 1)) days.add(ymd(d));
+    });
+    return [...days].sort();
+  };
   const state = (u) => {
     const pm = u.role === 'pm';
     const leader = (e) => ['pm', 'pl'].includes((db.users.find((x) => x.email === e) || {}).role);
@@ -754,7 +763,7 @@ const Mock = (() => {
           ? { email: x.email, name: x.name, part: x.part, usage: true, annual: Object.fromEntries(Object.entries(x.annual || {}).map(([y, k]) => [y, typeof k === 'object'
             ? (({ 내역, ...rest }) => ({ ...rest, ...Object.fromEntries(GRANT_KINDS.filter((g) => (내역 || []).some((x2) => x2.kind === g)).map((g) => [g, 내역.filter((x2) => x2.kind === g).reduce((s2, x2) => s2 + x2.days, 0)])) }))(k) : k])) }
           : { email: x.email, name: x.name, part: x.part })),
-      leaves: db.leaves.filter(visible).map((l) => (brief(l) ? { ...l, memo: '', conflicts: [] } : { ...l, conflicts: conflictsOf(l) })),
+      leaves: db.leaves.filter(visible).map((l) => (brief(l) ? { ...l, memo: '', conflicts: [], conflictDays: [] } : { ...l, conflicts: conflictsOf(l), conflictDays: conflictDaysOf(l) })),
       holidays: db.holidays,
       events: db.events || [],
       designatedBy: [...new Set(db.leaves.filter((l) => l.substitutes.includes(u.email) && l.endDate >= todayStr()).map((l) => nameOf(l.email)))].sort(),
@@ -1138,6 +1147,8 @@ const scoped = () => (canSeeAll() && ui.part ? S.leaves.filter((l) => partOf(l.e
 // 본인은 지나지 않은 일정만, PM은 지난 일정까지 수정·삭제
 const canEdit = (l) => isAdmin() || (l.email === S.me.email && l.endDate >= todayStr());
 const conflictsOf = (l) => l.conflicts || [];
+/** 그 날짜에 대직 겹침이 있는지 (예전 서버 응답에 conflictDays가 없으면 일정 전체 기준) */
+const conflictOn = (l, ds) => (l.conflictDays ? l.conflictDays.includes(ds) : conflictsOf(l).length > 0);
 
 function derive() {
   const holidays = {};
@@ -1477,7 +1488,7 @@ function viewCalendar() {
       <div class="dtop"><span class="dnum">${d.getDate()}</span>${D.holidays[ds] ? `<span class="hname">${esc(D.holidays[ds])}</span>` : ''}</div>
       ${evs.map((e) => `<div class="chip evt" title="${esc(e.title)}${e.time ? ' ' + esc(e.time) : ''}"><span class="w">★</span><span class="nm">${esc(e.title)}</span></div>`).join('')}
       ${shown.map((l) => {
-        const c = conflictsOf(l).length;
+        const c = conflictOn(l, ds);
         const cover = l.email !== me && l.substitutes.includes(me);
         return `<div class="chip t-${l.type} ${c ? 'conflict' : ''} ${cover ? 'cover' : ''} ${l.email === me ? 'mine' : ''}" title="${esc(nameOf(l.email))} ${l.type}${cover ? ' (내가 대직)' : ''}${c ? ' — 대직 겹침' : ''}">${c ? '<span class="w">⚠</span>' : ''}${cover ? '<span class="w">↺</span>' : ''}<span class="nm">${esc(nameOf(l.email))}</span><span class="ty">${SHORT[l.type]}</span></div>`;
       }).join('')}
@@ -1557,8 +1568,9 @@ function partSelect() {
 }
 
 /* ---------- 일정 카드 ---------- */
+/** opts.day: 날짜 상세에서는 그날 겹침이 있을 때만 경고 */
 function leaveItem(l, opts = {}) {
-  const c = conflictsOf(l);
+  const c = opts.day && !conflictOn(l, opts.day) ? [] : conflictsOf(l);
   const past = l.endDate < todayStr();
   return `<div class="card item barred ${past ? 'past' : ''}">
     <div class="bar t-${l.type}"></div>
@@ -3010,7 +3022,7 @@ function openDay(ds) {
       <button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       ${evs.length ? `<div class="evt-list" style="margin:0 0 12px">${evs.map(evtItem).join('')}</div>` : ''}
-      <div class="list">${items.length ? items.map((l) => leaveItem(l, { showName: true })).join('') : `<div class="empty">${canSeeTeam() ? '부재 인원이 없습니다.' : '내 일정이 없습니다.'}</div>`}</div></div>
+      <div class="list">${items.length ? items.map((l) => leaveItem(l, { showName: true, day: ds })).join('') : `<div class="empty">${canSeeTeam() ? '부재 인원이 없습니다.' : '내 일정이 없습니다.'}</div>`}</div></div>
     <footer>${canSeeAll() ? `<button class="btn" data-act="copyAttendance" data-v="${ds}">근태 복사</button>` : ''}
       ${isAdmin() ? `<button class="btn" data-act="newEvent" data-v="${ds}">+ 중요 일정</button>` : ''}<span class="spacer"></span>
       <button class="btn primary" data-new>+ 이 날 일정 등록</button></footer>`);
