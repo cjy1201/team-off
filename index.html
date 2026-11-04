@@ -216,6 +216,16 @@
   .overlay { position: fixed; inset: 0; background: rgba(15,17,21,.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
   .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 480px; max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 20px 40px rgba(0,0,0,.2); }
   .modal.wide { max-width: 640px; }
+  /* 요청함 */
+  .tab-n { display: inline-block; min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 11px; line-height: 16px; text-align: center; font-weight: 700; vertical-align: 1px; }
+  .bnav button { position: relative; } .bnav .tab-n { position: absolute; top: 2px; left: calc(50% + 6px); margin: 0; }
+  .req-item { cursor: pointer; } .req-desc { margin-top: 4px; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .seg.wrap { flex-wrap: wrap; }
+  .slot-day { margin-top: 8px; } .slot-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .slot { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font: inherit; font-size: 13px; color: var(--text); cursor: pointer; }
+  .slot span { font-size: 11px; color: var(--muted); } .slot.on { border-color: var(--primary); background: var(--primary-weak, var(--surface-2)); color: var(--primary); font-weight: 600; }
+  .slot:disabled { opacity: .45; cursor: default; } .slot button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 0 0 2px; font: inherit; }
+  .q-edit { padding: 12px; margin-top: 8px; } td.wrap-cell { white-space: normal; min-width: 80px; max-width: 260px; }
   .modal header { padding: 16px 18px 8px; display: flex; justify-content: space-between; align-items: center; }
   .modal header h3 { margin: 0; font-size: 16px; }
   .modal .content { padding: 4px 18px 16px; }
@@ -768,6 +778,7 @@ const Mock = (() => {
       events: db.events || [],
       designatedBy: [...new Set(db.leaves.filter((l) => l.substitutes.includes(u.email) && l.endDate >= todayStr()).map((l) => nameOf(l.email)))].sort(),
       news: newsOf(u),
+      reqPending: Mock._reqState ? Mock._reqState(u).pending : 0,
     };
   };
   const result = (u, extra) => { persist(); return { state: state(u), ...extra }; };
@@ -929,6 +940,136 @@ const Mock = (() => {
         out.push(`${nameOf(e)}님 ${fmtRange({ startDate: s, endDate: en })}${l.type === '오전반차' ? ' 오전' : l.type === '오후반차' || l.type === '반반차' ? ' 오후' : ''} 부재`);
       }));
       return out;
+    },
+    // 요청함 (서버 Code.gs requestsState_ · submitResponse 등과 같은 규칙)
+    _reqTargets(r) {
+      const t = r.targets || { mode: 'all' };
+      const list = t.mode === 'people' ? (t.emails || []).filter((e) => db.users.some((u) => u.email === e))
+        : db.users.filter((u) => !isTester(u) && (t.mode !== 'parts' || (t.parts || []).includes(u.part || (u.role === 'pm' ? 'PM' : '')))).map((u) => u.email);
+      return list.filter((e) => e !== r.createdBy);
+    },
+    _reqOpen: (r) => r.status !== 'closed' && todayStr() <= r.deadline,
+    _reqState(u) {
+      const pm = u.role === 'pm';
+      db.requests = db.requests || []; db.responses = db.responses || [];
+      const partOf = (e) => (db.users.find((x) => x.email === e) || {}).part || '';
+      const requests = db.requests.map((r) => {
+        const targets = this._reqTargets(r);
+        const isTarget = targets.includes(u.email);
+        if (!pm && !isTarget) return null;
+        const resps = db.responses.filter((x) => x.requestId === r.id);
+        const mine = resps.find((x) => x.email === u.email);
+        const sq = r.questions.find((q) => q.type === 'slot');
+        const taken = {};
+        if (sq) resps.forEach((x) => { const v = x.answers[sq.id]; if (v) taken[v] = (taken[v] || 0) + 1; });
+        const showAll = pm || r.shared;
+        return { ...r, shared: !!r.shared, status: r.status === 'closed' ? 'closed' : 'open', open: this._reqOpen(r), createdByName: nameOf(r.createdBy), isTarget, canManage: pm,
+          targetCount: targets.length, responseCount: resps.filter((x) => targets.includes(x.email)).length,
+          mine: mine ? { answers: mine.answers, updatedAt: mine.updatedAt } : null, slotTaken: taken,
+          responses: showAll ? resps.map((x) => ({ email: x.email, name: nameOf(x.email), part: partOf(x.email), answers: x.answers, updatedAt: x.updatedAt })) : [],
+          pending: pm ? targets.filter((e) => !resps.some((x) => x.email === e)).map((e) => ({ email: e, name: nameOf(e), part: partOf(e) })) : [] };
+      }).filter(Boolean).sort((a, b) => (a.open !== b.open ? (a.open ? -1 : 1) : a.deadline < b.deadline ? (a.open ? -1 : 1) : a.open ? 1 : -1));
+      return { requests, pending: requests.filter((r) => r.open && r.isTarget && !r.mine).length };
+    },
+    getRequests(token) { return this._reqState(auth(token)); },
+    saveRequest(token, i) {
+      const u = admin(token);
+      db.requests = db.requests || []; db.responses = db.responses || [];
+      const ex = i.id ? db.requests.find((r) => r.id === i.id) : null;
+      need((i.title || '').trim(), '제목을 입력하세요.');
+      need(i.deadline, '마감일을 선택하세요.');
+      need(ex || i.deadline >= todayStr(), '마감일이 이미 지났습니다.');
+      const t = i.targets || { mode: 'all' };
+      need(t.mode !== 'parts' || (t.parts || []).length, '대상 파트를 고르세요.');
+      need(t.mode !== 'people' || (t.emails || []).length, '대상자를 1명 이상 고르세요.');
+      const hasResp = ex && db.responses.some((x) => x.requestId === ex.id);
+      let questions = hasResp ? ex.questions : i.questions || [];
+      if (!hasResp) {
+        need(questions.length, '질문을 1개 이상 넣으세요.');
+        questions = questions.map((q, k) => {
+          need((q.label || '').trim(), `${k + 1}번 질문 내용을 입력하세요.`);
+          need(!['choice', 'multi'].includes(q.type) || (q.options || []).length >= 2, `'${q.label}' 질문에 보기를 2개 이상 넣으세요.`);
+          need(q.type !== 'slot' || (q.slots || []).length, `'${q.label}' 질문에 시간대를 1개 이상 만드세요.`);
+          return { ...q, label: q.label.trim(), ...(q.type === 'slot' ? { slots: q.slots.map((s) => ({ ...s, id: `${s.date} ${s.start}` })) } : {}) };
+        });
+        need(questions.filter((q) => q.type === 'slot').length <= 1, "'시간대 고르기' 질문은 하나만 넣을 수 있습니다.");
+      }
+      const r = { id: ex ? ex.id : 'Q' + Date.now(), title: i.title.trim(), desc: i.desc || '', targets: t, questions, deadline: i.deadline,
+        status: ex ? ex.status : 'open', shared: !!i.shared, createdBy: ex ? ex.createdBy : u.email, createdAt: ex ? ex.createdAt : new Date().toISOString(), updatedAt: new Date().toISOString() };
+      db.requests = db.requests.filter((x) => x.id !== r.id).concat([r]);
+      log(u, 'request', ex ? '수정' : '등록', '', r.title);
+      if (!ex) push(u, this._reqTargets(r), `새 요청: ${r.title} (~${fmtShort(r.deadline)})`, 'tab:requests');
+      persist(); return this._reqState(u);
+    },
+    setRequestStatus(token, id, status) {
+      const u = admin(token); const r = (db.requests || []).find((x) => x.id === id);
+      need(r, '요청을 찾을 수 없습니다.');
+      need(status !== 'open' || r.deadline >= todayStr(), '마감일이 지났습니다. 마감일을 먼저 바꿔 주세요.');
+      r.status = status === 'closed' ? 'closed' : 'open'; log(u, 'request', r.status === 'closed' ? '마감' : '다시 열기', '', r.title);
+      persist(); return this._reqState(u);
+    },
+    deleteRequest(token, id) {
+      const u = admin(token);
+      const gone = (db.responses || []).filter((x) => x.requestId === id);
+      db.tasks = (db.tasks || []).filter((t) => !gone.some((x) => x.taskId === t.id));
+      db.responses = (db.responses || []).filter((x) => x.requestId !== id);
+      db.requests = (db.requests || []).filter((x) => x.id !== id);
+      log(u, 'request', '삭제', '', `응답 ${gone.length}건`); persist(); return this._reqState(u);
+    },
+    remindRequest(token, id) {
+      const u = admin(token); const r = db.requests.find((x) => x.id === id);
+      const pending = this._reqTargets(r).filter((e) => !db.responses.some((x) => x.requestId === id && x.email === e));
+      push(u, pending, `응답 부탁드려요: ${r.title} (~${fmtShort(r.deadline)})`, 'tab:requests');
+      persist(); return { ...this._reqState(u), reminded: pending.length };
+    },
+    submitResponse(token, id, answers) {
+      const u = auth(token);
+      const r = (db.requests || []).find((x) => x.id === id);
+      need(r, '요청을 찾을 수 없습니다.');
+      need(this._reqTargets(r).includes(u.email), '이 요청의 대상자가 아닙니다.');
+      need(this._reqOpen(r), '마감된 요청입니다.');
+      const resps = db.responses.filter((x) => x.requestId === id);
+      const mine = resps.find((x) => x.email === u.email);
+      const out = {};
+      r.questions.forEach((q) => {
+        let v = answers[q.id];
+        if (q.type === 'multi') { v = (v || []).filter((x) => q.options.includes(x)); need(!q.required || v.length, `'${q.label}' 항목을 고르세요.`); if (v.length) out[q.id] = v; return; }
+        v = v == null ? '' : String(v).trim();
+        if (!v) { need(!q.required, `'${q.label}' 항목을 입력하세요.`); return; }
+        need(q.type !== 'link' || /^https?:\S+$/i.test(v), `'${q.label}'에는 http로 시작하는 주소를 넣으세요.`);
+        need(q.type !== 'number' || isFinite(Number(v)), `'${q.label}'에는 숫자를 넣으세요.`);
+        if (q.type === 'slot') {
+          const s = q.slots.find((x) => x.id === v);
+          need(s, '시간대를 다시 고르세요.');
+          const used = resps.filter((x) => x.email !== u.email && x.answers[q.id] === v).length;
+          need(v === (mine && mine.answers[q.id]) || used < s.cap, '방금 마감된 시간대예요. 다른 시간대를 골라 주세요.');
+        }
+        out[q.id] = v;
+      });
+      const row = mine || { id: 'A' + Date.now(), requestId: id, email: u.email, taskId: '' };
+      Object.assign(row, { answers: out, updatedAt: new Date().toISOString() });
+      const sq = r.questions.find((q) => q.type === 'slot');
+      const slot = sq && out[sq.id] ? sq.slots.find((x) => x.id === out[sq.id]) : null;
+      db.tasks = db.tasks || [];
+      db.tasks = db.tasks.filter((t) => t.id !== row.taskId || slot);
+      if (slot) {
+        const task = { id: row.taskId || 'T' + Date.now(), part: 'PM', title: `${r.title} · ${u.name}`, category: '회의/리뷰', startDate: slot.date, endDate: slot.date,
+          time: `${slot.start}~${slot.end}`, assignees: [r.createdBy, u.email], status: '예정', visibility: 'assignees', memo: '요청함 응답으로 자동 등록', createdBy: r.createdBy, series: '' };
+        db.tasks = db.tasks.filter((t) => t.id !== task.id).concat([task]);
+        row.taskId = task.id;
+      } else row.taskId = '';
+      if (!mine) db.responses.push(row);
+      persist(); return this._reqState(u);
+    },
+    cancelResponse(token, id) {
+      const u = auth(token);
+      const r = db.requests.find((x) => x.id === id);
+      need(this._reqOpen(r), '마감된 요청입니다.');
+      const mine = db.responses.find((x) => x.requestId === id && x.email === u.email);
+      need(mine, '취소할 응답이 없습니다.');
+      db.tasks = (db.tasks || []).filter((t) => t.id !== mine.taskId);
+      db.responses = db.responses.filter((x) => x !== mine);
+      persist(); return this._reqState(u);
     },
     getTasks(token) {
       const u = auth(token);
@@ -1271,9 +1412,9 @@ function render() {
         <button class="icon-btn ghost-btn" data-act="refresh" title="최신 내용 불러오기" aria-label="최신 내용 불러오기">↻</button>
         <button class="whoami btn ghost sm" data-act="account">${esc(S.me.name)} <span class="badge role-badge ${canSeeTeam() ? 'admin' : ''}">${esc(roleLabel(S.me))}</span> ▾</button></span>
       </div>
-      <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}</button>`).join('')}</nav>
+      <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}${tabBadge(k)}</button>`).join('')}</nav>
     </div></header>
-    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, all: viewAll, members: viewMembers, holidays: viewHolidays, history: viewHistory })[ui.tab]()}</main>
+    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, requests: viewRequests, all: viewAll, members: viewMembers, holidays: viewHolidays, history: viewHistory })[ui.tab]()}</main>
     ${NAV_BOTTOM ? bottomNav(tabs) : ''}`;
   if (document.body && document.body.classList) document.body.classList.toggle('navb', NAV_BOTTOM);
 }
@@ -1303,11 +1444,14 @@ const BN_ICON = {
   members: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.5 16.5a3.5 3.5 0 0 1 7 0M14.5 10h4M14.5 13.5h3"/>',
   holidays: '<path d="M5 21V4M5 4.5h11l-2 3.5 2 3.5H5"/>',
   history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4"/><path d="M12 8v4.5l3 1.8"/>',
+  requests: '<path d="M3 13.5h5l1.5 3h5l1.5-3h5"/><path d="M5.5 5h13l2.5 8.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5.5z"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
 };
+/** 메뉴 옆 숫자 배지 — 요청함: 응답할 요청 수 */
+const tabBadge = (k) => (k === 'requests' && S && S.reqPending ? `<span class="tab-n">${S.reqPending}</span>` : '');
 /** 보이는 탭 (권한별) — 내 메뉴 순서(S.me.navOrder)대로, 순서에 없는 탭은 기본 순서로 뒤에 */
 function myTabs(defaultOrder) {
-  const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['work', '업무 일정'], ['mine', '내 일정']];
+  const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['work', '업무 일정'], ['mine', '내 일정'], ['requests', '요청함']];
   if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일'], ['history', '변경 이력']);
   else if (canSeeAll()) tabs.push(['all', '전체 일정']);
   else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
@@ -1317,7 +1461,7 @@ function myTabs(defaultOrder) {
 }
 const NAV_MAIN = 4; // 하단 탭바에 바로 보이는 메뉴 수 (나머지는 '더보기')
 function bottomNav(tabs) {
-  const label = { cal: '캘린더', events: '중요', work: '업무', mine: '내 일정', more: '더보기', all: canSeeAll() ? '전체' : '파트', members: '팀원', holidays: '공휴일', history: '이력' };
+  const label = { cal: '캘린더', events: '중요', work: '업무', mine: '내 일정', requests: '요청함', more: '더보기', all: canSeeAll() ? '전체' : '파트', members: '팀원', holidays: '공휴일', history: '이력' };
   const main = (tabs.length <= NAV_MAIN + 1 ? tabs : tabs.slice(0, NAV_MAIN)).map(([k]) => k);
   const extra = tabs.filter(([k]) => !main.includes(k));
   const items = main.map((k) => [k, label[k], 'tab']);
@@ -1325,7 +1469,7 @@ function bottomNav(tabs) {
   else if (extra.length > 1) items.push(['more', label.more, 'navMore']);
   const on = (k) => (k === 'more' ? extra.some(([x]) => x === ui.tab) : ui.tab === k);
   return `<nav class="bnav" style="grid-template-columns: repeat(${items.length}, 1fr)">${items.map(([k, t, act]) => `<button class="${on(k) ? 'on' : ''}" data-act="${act}" data-v="${k}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${BN_ICON[k] || BN_ICON.more}</svg><span>${t}</span></button>`).join('')}</nav>`;
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${BN_ICON[k] || BN_ICON.more}</svg><span>${t}</span>${k === 'more' ? (extra.some(([x]) => x === 'requests') ? tabBadge('requests') : '') : tabBadge(k)}</button>`).join('')}</nav>`;
 }
 /** 홈 화면에 추가 안내 띠 — 휴대폰 브라우저로 들어온 사람에게만, 닫으면 이 기기에서는 다시 안 뜸 */
 const A2HS_KEY = 'team-off-a2hs-hide';
@@ -1361,7 +1505,7 @@ async function addToHome() {
 function openNavMore() {
   const tabs = myTabs().slice(NAV_MAIN);
   openModal(`<header><h3>더보기</h3><button class="btn ghost sm" data-close>닫기</button></header>
-    <div class="content"><div class="more-list">${tabs.map(([k, t]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}<span>›</span></button>`).join('')}</div></div>`);
+    <div class="content"><div class="more-list">${tabs.map(([k, t]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}${tabBadge(k)}<span>›</span></button>`).join('')}</div></div>`);
 }
 
 function previewBar() {
@@ -2480,8 +2624,343 @@ function goNews(go) {
   }
 }
 
+/* ---------- 요청함 (도서구매 신청 · 면담 일정 취합 등 — 만들기는 PM, 응답은 대상자) ---------- */
+const R = { loaded: false, loading: false, error: '', list: [] };
+const REQ_TYPES = [['text', '짧은 글'], ['long', '긴 글'], ['number', '숫자'], ['link', '링크'], ['choice', '하나 고르기'], ['multi', '여러 개 고르기'], ['date', '날짜'], ['slot', '시간대 고르기 (선착순)']];
+const REQ_TYPE_LABEL = Object.fromEntries(REQ_TYPES);
+const REQ_TEMPLATES = {
+  book: { title: '도서구매 신청', desc: '읽고 싶은 업무 관련 도서를 신청해 주세요.', shared: true, questions: [
+    { type: 'text', label: '도서명', required: true }, { type: 'link', label: '도서 링크 (온라인 서점 주소)' },
+    { type: 'number', label: '가격 (원)', required: true }, { type: 'number', label: '수량', required: true }, { type: 'long', label: '신청 사유' }] },
+  meet: { title: '면담 일정 신청', desc: '편한 시간대를 골라 주세요. 고르면 업무 일정에 자동으로 등록돼요.', questions: [
+    { type: 'slot', label: '면담 시간', required: true, slots: [] }, { type: 'long', label: '하고 싶은 이야기 (선택)' }] },
+  attend: { title: '참석 조사', desc: '', questions: [
+    { type: 'choice', label: '참석 여부', required: true, options: ['참석', '불참'] }, { type: 'text', label: '비고' }] },
+};
+
+function loadRequests(force) {
+  if (R.loading || (R.loaded && !force)) return;
+  R.loading = true;
+  api('getRequests')
+    .then((r) => { R.list = r.requests || []; R.loaded = true; R.error = ''; S.reqPending = r.pending || 0; })
+    .catch((e) => { const m = (e && e.message) || String(e); if (m.indexOf('AUTH:') >= 0) return handleError(e); R.error = m; })
+    .finally(() => { R.loading = false; if (screen === 'app' && ui.tab === 'requests') render(); });
+}
+
+/** 요청함 저장 결과({ requests, pending }) 반영. 면담 시간대는 업무 일정도 바뀌므로 업무 일정은 다시 불러옴 */
+async function runReq(promise, okMsg, after) {
+  loading(true);
+  try {
+    const r = await promise;
+    R.list = r.requests || []; R.loaded = true; S.reqPending = r.pending || 0; stateSeq++;
+    W.loaded = false;
+    closeModal(); render();
+    if (okMsg) toast(typeof okMsg === 'function' ? okMsg(r) : okMsg);
+    if (after) after(r);
+  } catch (e) {
+    handleError(e);
+  } finally {
+    loading(false);
+  }
+}
+
+const reqDeadline = (r) => {
+  const left = Math.round((parse(r.deadline) - parse(todayStr())) / 864e5);
+  return `마감 ${fmtShort(r.deadline)}${r.open ? (left === 0 ? ' · 오늘 마감' : ` · D-${left}`) : ''}`;
+};
+const reqTargetText = (t) => (t.mode === 'parts' ? `${(t.parts || []).join(', ')} 파트` : t.mode === 'people' ? `${(t.emails || []).length}명 지정` : '전체 직원');
+const slotText = (s) => `${fmtShort(s.date)} ${s.start}~${s.end}`;
+/** 응답 값을 보기 좋은 글로 (표 · CSV · 공개 목록 공용) */
+function reqAnswerText(q, v) {
+  if (v == null || v === '' || (Array.isArray(v) && !v.length)) return '';
+  if (q.type === 'multi') return v.join(', ');
+  if (q.type === 'slot') { const s = (q.slots || []).find((x) => x.id === v); return s ? slotText(s) : v; }
+  if (q.type === 'date') return fmtShort(v);
+  if (q.type === 'number') return Number(v).toLocaleString('ko-KR');
+  return String(v);
+}
+
+function viewRequests() {
+  if (!R.loaded) {
+    loadRequests();
+    return R.error
+      ? `<div class="card empty">요청함을 불러오지 못했습니다. ${esc(R.error)}<br><button class="btn sm" data-act="reloadReq" style="margin-top:8px">다시 시도</button></div>`
+      : '<div class="card empty">요청함을 불러오는 중…</div>';
+  }
+  const todo = R.list.filter((r) => r.open && r.isTarget && !r.mine);
+  const open = R.list.filter((r) => r.open && !todo.includes(r));
+  const closed = R.list.filter((r) => !r.open);
+  const card = (r) => {
+    const status = !r.open ? '<span class="badge">마감</span>'
+      : r.isTarget ? (r.mine ? '<span class="badge" style="background:var(--ok-weak,#e7f6ec);color:var(--ok,#15803d)">응답 완료</span>' : '<span class="badge" style="background:var(--danger-weak);color:var(--danger)">응답 필요</span>') : '';
+    return `<div class="card item req-item" data-act="openReq" data-v="${esc(r.id)}" role="button" tabindex="0">
+      <div class="body"><div class="title">${esc(r.title)} ${status}${r.shared ? ' <span class="badge">응답 공개</span>' : ''}</div>
+        <div class="meta">${esc(reqDeadline(r))}${r.canManage ? ` · ${esc(reqTargetText(r.targets))} · 응답 <b>${r.responseCount}</b>/${r.targetCount}명` : ` · ${esc(r.createdByName)}`}</div>
+        ${r.desc ? `<div class="muted small req-desc">${esc(r.desc)}</div>` : ''}</div></div>`;
+  };
+  const sec = (title, list, empty) => `<div class="section-title">${title} <span class="muted small">${list.length}건</span></div>
+    <div class="list">${list.length ? list.map(card).join('') : `<div class="card empty">${empty}</div>`}</div>`;
+  return `
+    <div class="section-title" style="margin-top:4px"><span>요청함</span>${isAdmin() ? '<button class="btn primary" data-act="newReq">+ 새 요청</button>' : ''}</div>
+    <div class="infobox" style="margin:0 0 4px">도서구매 신청 · 면담 일정 같은 취합을 여기서 받아요. 응답은 <b>본인과 PM만</b> 봐요 ('응답 공개' 요청은 대상자끼리도 보여요).</div>
+    ${todo.length || !isAdmin() ? sec('응답할 요청', todo, '응답할 요청이 없습니다.') : ''}
+    ${sec(isAdmin() ? '진행 중' : '응답한 요청', open, isAdmin() ? '진행 중인 요청이 없습니다.' : '진행 중인 요청이 없습니다.')}
+    ${closed.length ? sec('마감', closed, '') : ''}`;
+}
+
+/** 요청 열기: 대상자는 응답 양식, PM은 관리 버튼 */
+function openRequest(id) {
+  const r = R.list.find((x) => x.id === id);
+  if (!r) return;
+  const ans = JSON.parse(JSON.stringify((r.mine && r.mine.answers) || {}));
+  const can = r.isTarget && r.open;
+  const field = (q) => {
+    const v = ans[q.id];
+    const req = q.required ? ' <span class="req">*</span>' : '';
+    const dis = can ? '' : 'disabled';
+    let input = '';
+    if (q.type === 'text') input = `<input data-q="${q.id}" maxlength="200" value="${esc(v || '')}" ${dis}>`;
+    else if (q.type === 'long') input = `<textarea data-q="${q.id}" rows="3" maxlength="1000" ${dis}>${esc(v || '')}</textarea>`;
+    else if (q.type === 'number') input = `<input data-q="${q.id}" type="number" inputmode="decimal" value="${esc(v || '')}" ${dis}>`;
+    else if (q.type === 'link') input = `<input data-q="${q.id}" type="url" maxlength="500" placeholder="http로 시작하는 주소" value="${esc(v || '')}" ${dis}>`;
+    else if (q.type === 'date') input = `<input data-q="${q.id}" type="date" value="${esc(v || '')}" ${dis}>`;
+    else if (q.type === 'choice' || q.type === 'multi') input = `<div class="seg wrap" data-qc="${q.id}">${q.options.map((o) => `<button type="button" data-o="${esc(o)}" class="${(q.type === 'multi' ? (v || []).includes(o) : v === o) ? 'on' : ''}" ${dis}>${esc(o)}</button>`).join('')}</div>`;
+    else if (q.type === 'slot') {
+      const byDate = {};
+      q.slots.forEach((s) => (byDate[s.date] = byDate[s.date] || []).push(s));
+      input = `<div data-qs="${q.id}">${Object.keys(byDate).map((d) => `<div class="slot-day"><div class="small muted">${fmtShort(d)}</div><div class="slot-grid">${byDate[d].map((s) => {
+        const used = (r.slotTaken[s.id] || 0) - (r.mine && r.mine.answers[q.id] === s.id ? 1 : 0);
+        const full = used >= s.cap;
+        return `<button type="button" class="slot${v === s.id ? ' on' : ''}" data-s="${esc(s.id)}" ${full || !can ? 'disabled' : ''}>${s.start}~${s.end}<span>${full ? '마감' : s.cap > 1 ? `남은 ${s.cap - used}` : ''}</span></button>`;
+      }).join('')}</div></div>`).join('')}</div>`;
+    }
+    return `<div class="field"><label>${esc(q.label)}${req}</label>${input}</div>`;
+  };
+  const others = r.shared && !r.canManage ? r.responses.filter((x) => x.email !== S.me.email) : [];
+  const m = openModal(`<header><h3>${esc(r.title)}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="muted small" style="margin-bottom:8px">${esc(reqDeadline(r))} · ${esc(r.createdByName)}${r.canManage ? ` · ${esc(reqTargetText(r.targets))}` : ''}</div>
+      ${r.desc ? `<div class="infobox" style="margin:0 0 12px;white-space:pre-wrap">${esc(r.desc)}</div>` : ''}
+      ${r.canManage ? `<div class="infobox" style="margin:0 0 12px">응답 <b>${r.responseCount}</b>/${r.targetCount}명${r.pending.length ? ` · 미응답 ${r.pending.slice(0, 5).map((p) => esc(p.name)).join(', ')}${r.pending.length > 5 ? ` 외 ${r.pending.length - 5}명` : ''}` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" data-rstat>현황 · 내려받기</button>
+        ${r.open && r.pending.length ? '<button class="btn sm" data-rremind>미응답자에게 다시 알림</button>' : ''}</div></div>` : ''}
+      ${r.isTarget ? r.questions.map(field).join('') : `<div class="muted small">질문 ${r.questions.length}개: ${r.questions.map((q) => esc(q.label)).join(', ')}</div>`}
+      ${r.isTarget && !r.open ? '<div class="infobox">마감된 요청이에요.</div>' : ''}
+      ${r.mine ? `<div class="muted small" style="margin-top:6px">응답 저장 ${esc(new Date(r.mine.updatedAt).toLocaleString('ko-KR'))}${can ? ' · 마감 전까지 고칠 수 있어요' : ''}</div>` : ''}
+      ${others.length ? `<div class="section-title" style="margin-top:16px">다른 사람 응답 <span class="muted small">${others.length}명</span></div>${reqTable(r, others)}` : ''}
+    </div>
+    <footer>${r.canManage ? '<button class="btn danger" data-rdel>삭제</button><button class="btn" data-redit>수정</button>' : ''}${r.canManage ? `<button class="btn" data-rclose>${r.status === 'closed' ? '다시 열기' : '마감'}</button>` : ''}
+      ${can && r.mine ? '<button class="btn" data-rcancel>응답 취소</button>' : ''}<span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>${can ? `<button class="btn primary" data-save>${r.mine ? '수정 저장' : '응답 제출'}</button>` : ''}</footer>`);
+  const q = (sel) => m.querySelector(sel);
+  m.querySelectorAll('[data-qc]').forEach((box) => {
+    const qq = r.questions.find((x) => x.id === box.dataset.qc);
+    box.querySelectorAll('[data-o]').forEach((b) => (b.onclick = () => {
+      const o = b.dataset.o;
+      if (qq.type === 'multi') { const cur = ans[qq.id] || []; ans[qq.id] = cur.includes(o) ? cur.filter((x) => x !== o) : cur.concat([o]); }
+      else ans[qq.id] = ans[qq.id] === o && !qq.required ? '' : o;
+      box.querySelectorAll('[data-o]').forEach((x) => x.classList.toggle('on', qq.type === 'multi' ? ans[qq.id].includes(x.dataset.o) : ans[qq.id] === x.dataset.o));
+    }));
+  });
+  m.querySelectorAll('[data-qs]').forEach((box) => box.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => {
+    const qq = r.questions.find((x) => x.id === box.dataset.qs);
+    ans[qq.id] = ans[qq.id] === b.dataset.s && !qq.required ? '' : b.dataset.s;
+    box.querySelectorAll('[data-s]').forEach((x) => x.classList.toggle('on', ans[qq.id] === x.dataset.s));
+  })));
+  if (q('[data-save]')) q('[data-save]').onclick = () => {
+    m.querySelectorAll('[data-q]').forEach((el) => (ans[el.dataset.q] = el.value));
+    const miss = r.questions.find((qq) => qq.required && (ans[qq.id] == null || ans[qq.id] === '' || (Array.isArray(ans[qq.id]) && !ans[qq.id].length)));
+    if (miss) return toast(`'${miss.label}' 항목을 ${['choice', 'multi', 'slot'].includes(miss.type) ? '고르' : '입력하'}세요.`, true);
+    runReq(api('submitResponse', r.id, ans), r.mine ? '응답을 수정했습니다.' : '응답을 제출했습니다.' + (r.questions.some((x) => x.type === 'slot' && ans[x.id]) ? ' 업무 일정에 면담이 등록됐어요.' : ''));
+  };
+  if (q('[data-rcancel]')) q('[data-rcancel]').onclick = async () => {
+    if (await confirmBox('응답 취소', `<p>${esc(r.title)} 응답을 지울까요?${r.questions.some((x) => x.type === 'slot') ? '<br><span class="muted small">고른 시간대와 면담 업무 일정도 함께 지워져요.</span>' : ''}</p>`, '응답 취소', true)) runReq(api('cancelResponse', r.id), '응답을 취소했습니다.');
+  };
+  if (r.canManage) {
+    q('[data-rstat]').onclick = () => openRequestStatus(r.id);
+    if (q('[data-rremind]')) q('[data-rremind]').onclick = () => runReq(api('remindRequest', r.id), (res) => `미응답자 ${res.reminded}명에게 알림을 보냈습니다.`, () => openRequest(r.id));
+    q('[data-redit]').onclick = () => openRequestForm(r.id);
+    q('[data-rclose]').onclick = () => runReq(api('setRequestStatus', r.id, r.status === 'closed' ? 'open' : 'closed'), r.status === 'closed' ? '다시 열었습니다.' : '마감했습니다.');
+    q('[data-rdel]').onclick = async () => {
+      if (await confirmBox('요청 삭제', `<p>${esc(r.title)}<br>응답 ${r.responses.length}건도 함께 지워져요.${r.questions.some((x) => x.type === 'slot') ? ' 자동 등록된 면담 업무 일정도 지워져요.' : ''} 삭제할까요?</p>`, '삭제', true)) runReq(api('deleteRequest', r.id), '삭제했습니다.');
+    };
+  }
+}
+
+/** 응답 표 (현황 · 공개 목록) */
+function reqTable(r, rows) {
+  return `<div class="card table-wrap"><table><thead><tr><th>이름</th>${r.questions.map((q) => `<th class="${q.type === 'number' ? 'num' : ''}">${esc(q.label)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((x) => `<tr><td>${esc(x.name)}${x.part ? ` <span class="muted small">${esc(x.part)}</span>` : ''}</td>${r.questions.map((q) => {
+      const t = reqAnswerText(q, x.answers[q.id]);
+      return `<td class="${q.type === 'number' ? 'num' : 'wrap-cell'}">${q.type === 'link' && t ? `<a href="${esc(t)}" target="_blank" rel="noopener noreferrer">링크</a>` : esc(t)}</td>`;
+    }).join('')}</tr>`).join('')}</tbody>
+    ${r.questions.some((q) => q.type === 'number') ? `<tfoot><tr><th>합계</th>${r.questions.map((q) => `<th class="num">${q.type === 'number' ? rows.reduce((s, x) => s + (Number(x.answers[q.id]) || 0), 0).toLocaleString('ko-KR') : ''}</th>`).join('')}</tr></tfoot>` : ''}</table></div>`;
+}
+
+/** PM: 응답 현황 표 + 미응답자 + CSV 내려받기 */
+function openRequestStatus(id) {
+  const r = R.list.find((x) => x.id === id);
+  if (!r) return;
+  const rows = r.responses.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const m = openModal(`<header><h3>${esc(r.title)} · 응답 현황</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="muted small" style="margin-bottom:8px">응답 ${r.responseCount}/${r.targetCount}명 · ${esc(reqDeadline(r))}</div>
+      ${rows.length ? reqTable(r, rows) : '<div class="card empty">아직 응답이 없습니다.</div>'}
+      ${r.pending.length ? `<div class="section-title" style="margin-top:14px">미응답 <span class="muted small">${r.pending.length}명</span></div><div class="small">${r.pending.map((p) => esc(p.name)).join(', ')}</div>` : ''}
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-back>뒤로</button><button class="btn primary" data-csv ${rows.length ? '' : 'disabled'}>엑셀(CSV) 내려받기</button></footer>`);
+  m.querySelector('.modal').classList.add('wide');
+  m.querySelector('[data-back]').onclick = () => openRequest(id);
+  m.querySelector('[data-csv]').onclick = () => {
+    const cell = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const head = ['이름', '파트', ...r.questions.map((q) => q.label), '응답 시각'];
+    const body = rows.map((x) => [x.name, x.part, ...r.questions.map((q) => (q.type === 'number' ? x.answers[q.id] || '' : reqAnswerText(q, x.answers[q.id]))), new Date(x.updatedAt).toLocaleString('ko-KR')]);
+    const pend = r.pending.map((p) => [p.name, p.part, ...r.questions.map(() => ''), '미응답']);
+    const text = String.fromCharCode(0xfeff) + [head, ...body, ...pend].map((row) => row.map(cell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${r.title.replace(/[\\/:*?"<>|]/g, '')}_${todayStr()}.csv` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+}
+
+/** PM: 요청 만들기 · 수정. 응답이 있으면 질문은 잠김 (제목 · 설명 · 마감일 · 대상 · 공개는 수정 가능) */
+function openRequestForm(id, tplKey) {
+  const ex = id ? R.list.find((x) => x.id === id) : null;
+  const tpl = tplKey ? REQ_TEMPLATES[tplKey] : null;
+  const src = ex || tpl || { title: '', desc: '', questions: [{ type: 'text', label: '', required: true }] };
+  const f = {
+    title: src.title, desc: src.desc || '', deadline: ex ? ex.deadline : ymd(addDays(parse(todayStr()), 7)), shared: !!src.shared,
+    targets: ex ? JSON.parse(JSON.stringify(ex.targets)) : { mode: 'all', parts: [], emails: [] },
+    questions: JSON.parse(JSON.stringify(src.questions)).map((q, i) => ({ ...q, id: q.id || 'q' + (i + 1), options: q.options || [], slots: q.slots || [] })),
+  };
+  f.targets.parts = f.targets.parts || []; f.targets.emails = f.targets.emails || [];
+  const locked = !!(ex && ex.responses.length);
+  const m = openModal(`<header><h3>${ex ? '요청 수정' : '새 요청'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      ${ex ? '' : `<div class="field"><label>템플릿 <span class="muted" style="font-weight:400">고르면 질문이 채워져요</span></label><div class="seg wrap">
+        ${[['book', '도서구매 신청'], ['meet', '면담 일정'], ['attend', '참석 조사'], ['', '빈 양식']].map(([k, t]) => `<button type="button" data-tpl="${k}" class="${(tplKey || '') === k ? 'on' : ''}">${t}</button>`).join('')}</div></div>`}
+      <div class="field"><label>제목 <span class="req">*</span></label><input name="title" maxlength="60" value="${esc(f.title)}" placeholder="예: 11월 도서구매 신청"></div>
+      <div class="field"><label>설명</label><textarea name="desc" rows="2" maxlength="500" placeholder="예: 1인 3만원 이내, 업무 관련 도서">${esc(f.desc)}</textarea></div>
+      <div class="field"><label>마감일 <span class="req">*</span> <span class="muted" style="font-weight:400">이 날까지 응답 · 수정 가능</span></label><input type="date" name="deadline" value="${f.deadline}"></div>
+      <div class="field"><label>대상</label><div class="seg" data-tmode>${[['all', '전체 직원'], ['parts', '파트 선택'], ['people', '직접 지정']].map(([k, t]) => `<button type="button" data-tm="${k}">${t}</button>`).join('')}</div>
+        <div data-tparts class="seg wrap" style="margin-top:8px">${[...PARTS, 'PM'].map((p) => `<button type="button" data-tp="${p}">${p}</button>`).join('')}</div>
+        <div data-tpeople class="assignee-box" style="margin-top:8px"></div>
+        <div class="muted small" data-tinfo style="margin-top:4px"></div></div>
+      <label class="toggle" style="color:var(--text)"><input type="checkbox" name="shared" ${f.shared ? 'checked' : ''}> <span>응답 공개 <span class="muted small">— 대상자끼리 서로의 응답을 볼 수 있어요 (예: 도서 중복 신청 방지)</span></span></label>
+      <div class="section-title" style="margin-top:16px"><span>질문</span>${locked ? '<span class="muted small">응답이 있어 질문은 바꿀 수 없어요</span>' : '<button type="button" class="btn sm" data-qadd>+ 질문 추가</button>'}</div>
+      <div data-qlist></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '요청 보내기'}</button></footer>`);
+  m.querySelector('.modal').classList.add('wide');
+  const q = (sel) => m.querySelector(sel);
+  const grab = () => { f.title = q('[name=title]').value; f.desc = q('[name=desc]').value; f.deadline = q('[name=deadline]').value; f.shared = q('[name=shared]').checked; };
+  m.querySelectorAll('[data-tpl]').forEach((b) => (b.onclick = () => openRequestForm(null, b.dataset.tpl)));
+  // 대상
+  const peopleBox = q('[data-tpeople]');
+  const nonTester = S.users.filter((u) => !isTester(u) && u.email !== S.me.email);
+  const paintTargets = () => {
+    const t = f.targets;
+    m.querySelectorAll('[data-tm]').forEach((b) => b.classList.toggle('on', b.dataset.tm === t.mode));
+    q('[data-tparts]').style.display = t.mode === 'parts' ? '' : 'none';
+    peopleBox.style.display = t.mode === 'people' ? '' : 'none';
+    m.querySelectorAll('[data-tp]').forEach((b) => b.classList.toggle('on', t.parts.includes(b.dataset.tp)));
+    const n = t.mode === 'all' ? nonTester.length : t.mode === 'parts' ? nonTester.filter((u) => t.parts.includes(u.part || (u.role === 'pm' ? 'PM' : ''))).length : t.emails.length;
+    q('[data-tinfo]').textContent = `대상 ${n}명${t.mode !== 'people' ? ' (테스터 · 나 제외)' : ''}`;
+  };
+  m.querySelectorAll('[data-tm]').forEach((b) => (b.onclick = () => { f.targets.mode = b.dataset.tm; paintTargets(); }));
+  m.querySelectorAll('[data-tp]').forEach((b) => (b.onclick = () => {
+    const p = b.dataset.tp, t = f.targets;
+    t.parts = t.parts.includes(p) ? t.parts.filter((x) => x !== p) : t.parts.concat([p]); paintTargets();
+  }));
+  renderAssignees(peopleBox, f.targets.emails, '', paintTargets, 200);
+  paintTargets();
+  // 질문 편집
+  const box = q('[data-qlist]');
+  const paintQs = () => {
+    box.innerHTML = f.questions.map((qq, i) => `<div class="card q-edit" data-qi="${i}">
+      <div class="row2"><div class="field" style="margin:0"><select data-k="type" ${locked ? 'disabled' : ''}>${REQ_TYPES.map(([k, t]) => `<option value="${k}" ${qq.type === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><label class="toggle"><input type="checkbox" data-k="required" ${qq.required ? 'checked' : ''} ${locked ? 'disabled' : ''}> 필수</label>
+        ${locked ? '' : `<button type="button" class="btn sm ghost" data-mv="-1" ${i ? '' : 'disabled'} aria-label="위로">▲</button><button type="button" class="btn sm ghost" data-mv="1" ${i < f.questions.length - 1 ? '' : 'disabled'} aria-label="아래로">▼</button><button type="button" class="btn sm ghost" data-qdel aria-label="질문 삭제">✕</button>`}</div></div>
+      <div class="field" style="margin:8px 0 0"><input data-k="label" maxlength="100" value="${esc(qq.label)}" placeholder="질문 내용 (예: 도서명)" ${locked ? 'disabled' : ''}></div>
+      ${qq.type === 'choice' || qq.type === 'multi' ? `<div class="field" style="margin:8px 0 0"><textarea data-k="options" rows="3" placeholder="보기를 한 줄에 하나씩" ${locked ? 'disabled' : ''}>${esc(qq.options.join('\n'))}</textarea></div>` : ''}
+      ${qq.type === 'slot' ? slotEditor(qq, locked) : ''}</div>`).join('');
+    box.querySelectorAll('[data-qi]').forEach((el) => {
+      const qq = f.questions[+el.dataset.qi];
+      const k = (n) => el.querySelector(`[data-k="${n}"]`);
+      k('type').onchange = (e) => { qq.type = e.target.value; paintQs(); };
+      k('required').onchange = (e) => (qq.required = e.target.checked);
+      k('label').oninput = (e) => (qq.label = e.target.value);
+      if (k('options')) k('options').oninput = (e) => (qq.options = e.target.value.split('\n').map((x) => x.trim()).filter(Boolean));
+      el.querySelectorAll('[data-mv]').forEach((b) => (b.onclick = () => {
+        const i = +el.dataset.qi, j = i + +b.dataset.mv;
+        [f.questions[i], f.questions[j]] = [f.questions[j], f.questions[i]]; paintQs();
+      }));
+      if (el.querySelector('[data-qdel]')) el.querySelector('[data-qdel]').onclick = () => { f.questions.splice(+el.dataset.qi, 1); paintQs(); };
+      if (qq.type === 'slot' && !locked) bindSlotEditor(el, qq, paintQs);
+    });
+  };
+  paintQs();
+  if (q('[data-qadd]')) q('[data-qadd]').onclick = () => {
+    const n = f.questions.reduce((mx, x) => Math.max(mx, +(String(x.id).match(/\d+/) || [0])[0]), 0) + 1;
+    f.questions.push({ id: 'q' + n, type: 'text', label: '', required: false, options: [], slots: [] }); paintQs();
+  };
+  q('[data-save]').onclick = () => {
+    grab();
+    if (!f.title.trim()) return toast('제목을 입력하세요.', true);
+    const qs = f.questions.map((x) => ({ id: x.id, type: x.type, label: x.label, required: !!x.required,
+      ...(x.type === 'choice' || x.type === 'multi' ? { options: x.options } : {}), ...(x.type === 'slot' ? { slots: x.slots } : {}) }));
+    runReq(api('saveRequest', { id: ex ? ex.id : '', title: f.title, desc: f.desc, deadline: f.deadline, targets: f.targets, shared: f.shared, ...(locked ? {} : { questions: qs }) }),
+      ex ? '저장했습니다.' : '요청을 보냈습니다. 대상자에게 소식이 가요.');
+  };
+}
+
+/** 시간대 질문 편집: 기간 · 시각 · 간격 · 정원으로 한 번에 만들고, 하나씩 지울 수 있음 */
+function slotEditor(qq, locked) {
+  const byDate = {};
+  qq.slots.forEach((s) => (byDate[s.date] = byDate[s.date] || []).push(s));
+  const d0 = ymd(addDays(parse(todayStr()), 7));
+  return `<div class="slot-edit">
+    ${locked ? '' : `<div class="row2" style="margin-top:8px"><div class="field" style="margin:0"><label>시작일</label><input type="date" data-sg="from" value="${d0}"></div><div class="field" style="margin:0"><label>종료일</label><input type="date" data-sg="to" value="${ymd(addDays(parse(d0), 4))}"></div></div>
+    <div class="row2" style="margin-top:8px"><div class="field" style="margin:0"><label>시작 시각</label><input type="time" data-sg="start" value="14:00" step="600"></div><div class="field" style="margin:0"><label>끝 시각</label><input type="time" data-sg="end" value="17:00" step="600"></div></div>
+    <div class="row2" style="margin-top:8px"><div class="field" style="margin:0"><label>한 칸 (분)</label><select data-sg="min">${[15, 20, 30, 40, 60].map((n) => `<option ${n === 30 ? 'selected' : ''}>${n}</option>`).join('')}</select></div><div class="field" style="margin:0"><label>칸당 정원</label><input type="number" data-sg="cap" value="1" min="1" max="50"></div></div>
+    <div style="display:flex;gap:6px;margin-top:8px;align-items:center"><button type="button" class="btn sm" data-sgo>시간대 만들기</button><span class="muted small">주말 · 공휴일은 빼고 만들어요</span>${qq.slots.length ? '<span class="spacer" style="flex:1"></span><button type="button" class="btn sm ghost" data-sclear>모두 지우기</button>' : ''}</div>`}
+    <div class="muted small" style="margin-top:8px">시간대 ${qq.slots.length}개</div>
+    ${Object.keys(byDate).sort().map((d) => `<div class="slot-day"><div class="small muted">${fmtShort(d)}</div><div class="slot-grid">${byDate[d].map((s) => `<span class="slot on">${s.start}~${s.end}${s.cap > 1 ? `<span>${s.cap}명</span>` : ''}${locked ? '' : `<button type="button" data-sdel="${esc(s.date + ' ' + s.start)}" aria-label="지우기">✕</button>`}</span>`).join('')}</div></div>`).join('')}
+  </div>`;
+}
+
+function bindSlotEditor(el, qq, repaint) {
+  const g = (k) => el.querySelector(`[data-sg="${k}"]`);
+  const go = el.querySelector('[data-sgo]');
+  if (go) go.onclick = () => {
+    const from = g('from').value, to = g('to').value, st = g('start').value, en = g('end').value;
+    const step = +g('min').value, cap = Math.max(1, Math.min(50, +g('cap').value || 1));
+    if (!from || !to || to < from || !st || !en || en <= st) return toast('기간과 시각을 확인하세요.', true);
+    const mins = (t) => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+    const hm = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+    const have = new Set(qq.slots.map((s) => s.date + ' ' + s.start));
+    let added = 0;
+    for (let d = parse(from); ymd(d) <= to; d = addDays(d, 1)) {
+      const ds = ymd(d);
+      if (d.getDay() === 0 || d.getDay() === 6 || D.holidays[ds]) continue;
+      for (let t = mins(st); t + step <= mins(en); t += step) {
+        if (have.has(ds + ' ' + hm(t))) continue;
+        qq.slots.push({ date: ds, start: hm(t), end: hm(t + step), cap }); added++;
+      }
+    }
+    qq.slots.sort((a, b) => (a.date + a.start < b.date + b.start ? -1 : 1));
+    if (qq.slots.length > 200) { qq.slots = qq.slots.slice(0, 200); toast('시간대는 200개까지만 만들 수 있어요.', true); }
+    else if (!added) toast('새로 만들 시간대가 없어요.', true);
+    repaint();
+  };
+  el.querySelectorAll('[data-sdel]').forEach((b) => (b.onclick = () => { qq.slots = qq.slots.filter((s) => s.date + ' ' + s.start !== b.dataset.sdel); repaint(); }));
+  const clr = el.querySelector('[data-sclear]');
+  if (clr) clr.onclick = () => { qq.slots = []; repaint(); };
+}
+
 /* ---------- 변경 이력 (PM) ---------- */
-const KIND_LABELS = { leave: '휴가', task: '업무', event: '중요 일정', user: '팀원', holiday: '공휴일', meal: '식권', login: '로그인' };
+const KIND_LABELS = { leave: '휴가', task: '업무', event: '중요 일정', request: '요청함', user: '팀원', holiday: '공휴일', meal: '식권', login: '로그인' };
 const HX = { loaded: false, loading: false, error: '', items: [], kind: '', who: '', noLogin: true, limit: 200 };
 
 function loadHistory() {
@@ -2786,6 +3265,10 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-04', items: [
+    { x: "새 메뉴 '요청함'이 생겼어요. 도서구매 신청 · 면담 일정 같은 취합을 받아요. 응답할 요청이 있으면 메뉴에 숫자가 떠요. 응답은 본인과 PM만 봐요." },
+    { x: '면담 요청에서 시간대를 고르면 업무 일정에 면담이 자동으로 등록돼요 (선착순, 바꾸거나 취소하면 업무 일정도 따라 바뀌어요).' },
+  ] },
   { d: '2026-10-30', items: [
     { x: '휴가가 대직자 일정과 겹치면 사유를 꼭 적어야 등록돼요. 등록 창에서 메모 칸이 \'사유 *\'로 바뀌어요.' },
     { x: '팀원 관리에 총원이 보여요 (테스터 계정은 총원 · 파트 인원에서 빠져요).' },
@@ -3590,6 +4073,7 @@ applyTheme(themePref()); // 저장해 둔 화면 모드
 async function boot() {
   if (MOVED) return render(); // 예전 주소: 서버를 부르지 않고 안내만
   W.loaded = false; W.tasks = []; W.error = '';
+  R.loaded = false; R.list = []; R.error = '';
   screen = 'loading'; render();
   const fromUrl = await readUrlToken();
   if (fromUrl) { urlToken = true; if (!getToken()) setToken(fromUrl); }
@@ -3720,6 +4204,9 @@ document.addEventListener('click', (e) => {
     case 'editTask': openTaskForm(v); break;
     case 'delTask': removeTask(v); break;
     case 'reloadTasks': W.error = ''; loadTasks(true); render(); break;
+    case 'reloadReq': R.error = ''; loadRequests(true); render(); break;
+    case 'openReq': openRequest(v); break;
+    case 'newReq': openRequestForm(null, ''); break;
     case 'editEvent': openEventForm(v); break;
     case 'delEvent': removeEvent(v); break;
     case 'delHoliday': confirmBox('공휴일 삭제', `<p>${fmtShort(v)} ${esc(D.holidays[v] || '')}을(를) 삭제할까요?</p>`, '삭제', true).then((ok) => ok && run(api('deleteHoliday', v), '삭제했습니다.')); break;
@@ -3737,7 +4224,7 @@ document.addEventListener('click', (e) => {
     case 'refresh': refreshData(true); break;
     case 'meal': approveMeal(); break;
     case 'copyAttendance': openAttendance(v); break;
-    case 'logout': setToken(''); syncUrlToken(''); S = null; W.loaded = false; W.tasks = []; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
+    case 'logout': setToken(''); syncUrlToken(''); S = null; W.loaded = false; W.tasks = []; R.loaded = false; R.list = []; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
     case 'reload': boot(); break;
     case 'reset': Mock._reset(); setToken(Mock._tokenFor('lead@example.com')); boot(); break;
   }
@@ -3792,6 +4279,7 @@ function goTab(v) {
   if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
   else ui.tab = v;
   if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
+  if (v === 'requests' && R.loaded) loadRequests(true); // 남은 시간대 · 응답 현황은 열 때마다 최신으로
   try { localStorage.setItem(TAB_KEY, ui.tab); } catch (e) {}
   render(); window.scrollTo(0, 0);
 }
@@ -3804,7 +4292,7 @@ const SHORTCUTS = [
   ['N', '새로 등록 (캘린더·내 일정 → 휴가, 업무 일정 → 업무, 중요 일정 → 중요 일정)'],
   ['← / →', '이전 · 다음 달 (공휴일은 이전 · 다음 해)'],
   ['T', '오늘로'],
-  ['1 ~ 8', '메뉴 이동 (내 메뉴 순서 기준)'],
+  ['1 ~ 9', '메뉴 이동 (내 메뉴 순서 기준)'],
   ['R', '최신 내용 불러오기'],
   ['/', '이름 검색 (전체 일정 탭으로 이동)'],
   ['Ctrl(⌘) + S', '열린 창 저장 · 등록'],
@@ -3842,7 +4330,7 @@ document.addEventListener('keydown', (e) => {
     if (!click(`main [data-act="month"][data-v="${d}"], main [data-act="wmonth"][data-v="${d}"], main [data-act="holYear"][data-v="${d}"]`)) return;
   } else if (c === 'KeyT') {
     click('main [data-act="month"][data-v="0"], main [data-act="wmonth"][data-v="0"]');
-  } else if (/^Digit[1-8]$/.test(c)) {
+  } else if (/^Digit[1-9]$/.test(c)) {
     const t = myTabs()[+c.slice(5) - 1];
     if (t) goTab(t[0]);
   } else if (c === 'KeyR') {
@@ -4012,6 +4500,10 @@ async function refreshData(manual) {
     if (W.loaded && seq === stateSeq) {
       const t = await api('getTasks');
       if (seq === stateSeq && JSON.stringify(t.tasks) !== JSON.stringify(W.tasks)) { W.tasks = t.tasks || []; changed = true; }
+    }
+    if (R.loaded && seq === stateSeq) {
+      const q = await api('getRequests');
+      if (seq === stateSeq && JSON.stringify(q.requests) !== JSON.stringify(R.list)) { R.list = q.requests || []; changed = true; }
     }
     lastRefresh = Date.now();
     if (changed) {
