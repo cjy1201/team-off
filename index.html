@@ -1032,6 +1032,7 @@ const Mock = (() => {
       const mine = resps.find((x) => x.email === u.email);
       const out = {};
       r.questions.forEach((q) => {
+        if (q.showIf && out[q.showIf.q] !== q.showIf.eq) return;
         let v = answers[q.id];
         if (q.type === 'multi') { v = (v || []).filter((x) => q.options.includes(x)); need(!q.required || v.length, `'${q.label}' 항목을 고르세요.`); if (v.length) out[q.id] = v; return; }
         v = v == null ? '' : String(v).trim();
@@ -2630,8 +2631,10 @@ const REQ_TYPES = [['text', '짧은 글'], ['long', '긴 글'], ['number', '숫�
 const REQ_TYPE_LABEL = Object.fromEntries(REQ_TYPES);
 const REQ_TEMPLATES = {
   book: { title: '도서구매 신청', desc: '읽고 싶은 업무 관련 도서를 신청해 주세요.', shared: true, questions: [
-    { type: 'text', label: '도서명', required: true }, { type: 'link', label: '도서 링크 (온라인 서점 주소)' },
-    { type: 'number', label: '가격 (원)', required: true }, { type: 'number', label: '수량', required: true }, { type: 'long', label: '신청 사유' }] },
+    { id: 'q1', type: 'choice', label: '구매 여부', required: true, options: ['신청', '이번엔 안 함'] },
+    ...[{ type: 'text', label: '도서명', required: true }, { type: 'link', label: '도서 링크 (온라인 서점 주소)' },
+      { type: 'number', label: '가격 (원)', required: true }, { type: 'number', label: '수량', required: true }, { type: 'long', label: '신청 사유' }]
+      .map((x, i) => ({ ...x, id: 'q' + (i + 2), showIf: { q: 'q1', eq: '신청' } }))] },
   meet: { title: '면담 일정 신청', desc: '편한 시간대를 골라 주세요. 고르면 업무 일정에 자동으로 등록돼요.', questions: [
     { type: 'slot', label: '면담 시간', required: true, slots: [] }, { type: 'long', label: '하고 싶은 이야기 (선택)' }] },
   attend: { title: '참석 조사', desc: '', questions: [
@@ -2734,8 +2737,10 @@ function openRequest(id) {
         return `<button type="button" class="slot${v === s.id ? ' on' : ''}" data-s="${esc(s.id)}" ${full || !can ? 'disabled' : ''}>${s.start}~${s.end}<span>${full ? '마감' : s.cap > 1 ? `남은 ${s.cap - used}` : ''}</span></button>`;
       }).join('')}</div></div>`).join('')}</div>`;
     }
-    return `<div class="field"><label>${esc(q.label)}${req}</label>${input}</div>`;
+    return `<div class="field" data-qw="${q.id}"><label>${esc(q.label)}${req}</label>${input}</div>`;
   };
+  // 조건부 질문: 앞 '하나 고르기' 답이 조건과 같을 때만 보임
+  const shown = (qq) => !qq.showIf || ans[qq.showIf.q] === qq.showIf.eq;
   const others = r.shared && !r.canManage ? r.responses.filter((x) => x.email !== S.me.email) : [];
   const m = openModal(`<header><h3>${esc(r.title)}</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
@@ -2760,8 +2765,11 @@ function openRequest(id) {
       if (qq.type === 'multi') { const cur = ans[qq.id] || []; ans[qq.id] = cur.includes(o) ? cur.filter((x) => x !== o) : cur.concat([o]); }
       else ans[qq.id] = ans[qq.id] === o && !qq.required ? '' : o;
       box.querySelectorAll('[data-o]').forEach((x) => x.classList.toggle('on', qq.type === 'multi' ? ans[qq.id].includes(x.dataset.o) : ans[qq.id] === x.dataset.o));
+      paintCond();
     }));
   });
+  const paintCond = () => r.questions.forEach((qq) => { const el = m.querySelector(`[data-qw="${qq.id}"]`); if (el) el.style.display = shown(qq) ? '' : 'none'; });
+  paintCond();
   m.querySelectorAll('[data-qs]').forEach((box) => box.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => {
     const qq = r.questions.find((x) => x.id === box.dataset.qs);
     ans[qq.id] = ans[qq.id] === b.dataset.s && !qq.required ? '' : b.dataset.s;
@@ -2769,7 +2777,8 @@ function openRequest(id) {
   })));
   if (q('[data-save]')) q('[data-save]').onclick = () => {
     m.querySelectorAll('[data-q]').forEach((el) => (ans[el.dataset.q] = el.value));
-    const miss = r.questions.find((qq) => qq.required && (ans[qq.id] == null || ans[qq.id] === '' || (Array.isArray(ans[qq.id]) && !ans[qq.id].length)));
+    r.questions.forEach((qq) => { if (!shown(qq)) delete ans[qq.id]; }); // 숨겨진 질문의 답은 보내지 않음
+    const miss = r.questions.find((qq) => qq.required && shown(qq) && (ans[qq.id] == null || ans[qq.id] === '' || (Array.isArray(ans[qq.id]) && !ans[qq.id].length)));
     if (miss) return toast(`'${miss.label}' 항목을 ${['choice', 'multi', 'slot'].includes(miss.type) ? '고르' : '입력하'}세요.`, true);
     runReq(api('submitResponse', r.id, ans), r.mine ? '응답을 수정했습니다.' : '응답을 제출했습니다.' + (r.questions.some((x) => x.type === 'slot' && ans[x.id]) ? ' 업무 일정에 면담이 등록됐어요.' : ''));
   };
@@ -2877,21 +2886,32 @@ function openRequestForm(id, tplKey) {
   paintTargets();
   // 질문 편집
   const box = q('[data-qlist]');
+  // 보이기 조건: 이 질문보다 앞에 있는 '하나 고르기' 질문의 보기 하나
+  const condKey = (c) => c.q + '#' + c.eq;
+  const condOpts = (i) => f.questions.slice(0, i).filter((x) => x.type === 'choice' && x.options.length)
+    .flatMap((x) => x.options.map((o) => [condKey({ q: x.id, eq: o }), `'${x.label || '(제목 없음)'}'이(가) '${o}'일 때만 보이기`]));
   const paintQs = () => {
+    f.questions.forEach((x, i) => { if (x.showIf && !condOpts(i).some(([v]) => v === condKey(x.showIf))) delete x.showIf; }); // 순서 · 보기가 바뀌어 맞지 않는 조건은 지움
     box.innerHTML = f.questions.map((qq, i) => `<div class="card q-edit" data-qi="${i}">
       <div class="row2"><div class="field" style="margin:0"><select data-k="type" ${locked ? 'disabled' : ''}>${REQ_TYPES.map(([k, t]) => `<option value="${k}" ${qq.type === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
         <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><label class="toggle"><input type="checkbox" data-k="required" ${qq.required ? 'checked' : ''} ${locked ? 'disabled' : ''}> 필수</label>
         ${locked ? '' : `<button type="button" class="btn sm ghost" data-mv="-1" ${i ? '' : 'disabled'} aria-label="위로">▲</button><button type="button" class="btn sm ghost" data-mv="1" ${i < f.questions.length - 1 ? '' : 'disabled'} aria-label="아래로">▼</button><button type="button" class="btn sm ghost" data-qdel aria-label="질문 삭제">✕</button>`}</div></div>
       <div class="field" style="margin:8px 0 0"><input data-k="label" maxlength="100" value="${esc(qq.label)}" placeholder="질문 내용 (예: 도서명)" ${locked ? 'disabled' : ''}></div>
       ${qq.type === 'choice' || qq.type === 'multi' ? `<div class="field" style="margin:8px 0 0"><textarea data-k="options" rows="3" placeholder="보기를 한 줄에 하나씩" ${locked ? 'disabled' : ''}>${esc(qq.options.join('\n'))}</textarea></div>` : ''}
-      ${qq.type === 'slot' ? slotEditor(qq, locked) : ''}</div>`).join('');
+      ${qq.type === 'slot' ? slotEditor(qq, locked) : ''}
+      ${condOpts(i).length ? `<div class="field" style="margin:8px 0 0"><select data-k="cond" ${locked ? 'disabled' : ''}><option value="">항상 보이기</option>${condOpts(i).map(([v, t]) => `<option value="${esc(v)}" ${qq.showIf && v === condKey(qq.showIf) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>` : ''}</div>`).join('');
     box.querySelectorAll('[data-qi]').forEach((el) => {
       const qq = f.questions[+el.dataset.qi];
       const k = (n) => el.querySelector(`[data-k="${n}"]`);
       k('type').onchange = (e) => { qq.type = e.target.value; paintQs(); };
       k('required').onchange = (e) => (qq.required = e.target.checked);
+      if (k('cond')) k('cond').onchange = (e) => { const v = e.target.value, j = v.indexOf('#'); if (v) qq.showIf = { q: v.slice(0, j), eq: v.slice(j + 1) }; else delete qq.showIf; };
       k('label').oninput = (e) => (qq.label = e.target.value);
-      if (k('options')) k('options').oninput = (e) => (qq.options = e.target.value.split('\n').map((x) => x.trim()).filter(Boolean));
+      if (k('options')) {
+        k('options').oninput = (e) => (qq.options = e.target.value.split('\n').map((x) => x.trim()).filter(Boolean));
+        k('options').onchange = paintQs; // 보기가 바뀌면 뒤 질문의 조건 목록도 갱신
+      }
+      if (qq.type === 'choice') k('label').onchange = paintQs; // 뒤 질문의 조건 목록에 이 질문 제목이 보이므로
       el.querySelectorAll('[data-mv]').forEach((b) => (b.onclick = () => {
         const i = +el.dataset.qi, j = i + +b.dataset.mv;
         [f.questions[i], f.questions[j]] = [f.questions[j], f.questions[i]]; paintQs();
@@ -2908,7 +2928,7 @@ function openRequestForm(id, tplKey) {
   q('[data-save]').onclick = () => {
     grab();
     if (!f.title.trim()) return toast('제목을 입력하세요.', true);
-    const qs = f.questions.map((x) => ({ id: x.id, type: x.type, label: x.label, required: !!x.required,
+    const qs = f.questions.map((x) => ({ id: x.id, type: x.type, label: x.label, required: !!x.required, ...(x.showIf ? { showIf: x.showIf } : {}),
       ...(x.type === 'choice' || x.type === 'multi' ? { options: x.options } : {}), ...(x.type === 'slot' ? { slots: x.slots } : {}) }));
     runReq(api('saveRequest', { id: ex ? ex.id : '', title: f.title, desc: f.desc, deadline: f.deadline, targets: f.targets, shared: f.shared, ...(locked ? {} : { questions: qs }) }),
       ex ? '저장했습니다.' : '요청을 보냈습니다. 대상자에게 소식이 가요.');
@@ -3267,6 +3287,7 @@ const GUIDE = [
 const UPDATES = [
   { d: '2026-11-04', items: [
     { x: "새 메뉴 '요청함'이 생겼어요. 도서구매 신청 · 면담 일정 같은 취합을 받아요. 응답할 요청이 있으면 메뉴에 숫자가 떠요. 응답은 본인과 PM만 봐요." },
+    { x: "요청 질문에 보이기 조건을 걸 수 있어요. 예: '구매 여부'가 '신청'일 때만 도서명 · 가격 칸이 보여요 (숨은 칸은 필수여도 비워도 돼요)." },
     { x: '면담 요청에서 시간대를 고르면 업무 일정에 면담이 자동으로 등록돼요 (선착순, 바꾸거나 취소하면 업무 일정도 따라 바뀌어요).' },
   ] },
   { d: '2026-10-30', items: [
