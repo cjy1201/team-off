@@ -311,9 +311,10 @@
   .guide li { margin: 3px 0; line-height: 1.5; }
   .guide .gdate { color: var(--muted); font-weight: 600; font-size: 12px; margin-left: 6px; }
   .whoami.btn { padding: 4px 8px; font-weight: 500; }
-  /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 기타) */
+  /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 인프라 · 6 기타)
+     마감은 배포(빨강)와 헷갈리지 않게 자홍 (예전 분홍은 빨강과 비슷했음, 초록은 회의/리뷰 청록과 비슷) */
   .k-0 { background: #4f46e5; } .k-1 { background: #dc2626; } .k-2 { background: #d97706; }
-  .k-3 { background: #0d9488; } .k-4 { background: #db2777; } .k-5 { background: #0284c7; } .k-6 { background: #64748b; }
+  .k-3 { background: #0d9488; } .k-4 { background: #c026d3; } .k-5 { background: #0284c7; } .k-6 { background: #64748b; }
   .chip .pt { flex: none; font-size: 9.5px; font-weight: 700; line-height: 13px; padding: 0 4px; border-radius: 3px; background: rgba(255,255,255,.28); } /* 파트 = 작은 태그, 제목과 구분 */
   .chip.done .pt { text-decoration: none; }
   .chip.done { opacity: .45; text-decoration: line-through; }
@@ -3285,6 +3286,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-05', items: [
+    { x: '업무 일정의 마감 색을 분홍에서 자홍(보라빛 분홍)으로 바꿨어요. 배포(빨강)와 한눈에 구분돼요.' },
+  ] },
   { d: '2026-11-04', items: [
     { x: "새 메뉴 '요청함'이 생겼어요. 도서구매 신청 · 면담 일정 같은 취합을 받아요. 응답할 요청이 있으면 메뉴에 숫자가 떠요. 응답은 본인과 PM만 봐요." },
     { x: "요청 질문에 보이기 조건을 걸 수 있어요. 예: '구매 여부'가 '신청'일 때만 도서명 · 가격 칸이 보여요 (숨은 칸은 필수여도 비워도 돼요)." },
