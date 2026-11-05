@@ -231,6 +231,11 @@
   .modal .content { padding: 4px 18px 16px; }
   .modal footer { padding: 12px 18px 16px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border); }
   .modal footer .spacer { flex: 1; }
+  .modal > footer { position: sticky; bottom: 0; background: var(--surface); z-index: 2; } /* 긴 메모를 써도 저장 버튼이 늘 보이게 */
+  .field textarea[data-grow] { min-height: 88px; max-height: 60vh; resize: vertical; line-height: 1.55; }
+  .memo-count { text-align: right; margin-top: 3px; }
+  .memo-clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .memo-more { background: none; border: 0; padding: 2px 0; color: var(--primary); font-size: 12px; cursor: pointer; }
   .field { margin-top: 12px; }
   .field > label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
   .field input, .field select, .field textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
@@ -403,6 +408,7 @@ const SHORT = { // 달력 칸에 표시하는 짧은 이름
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const PARTS = ['기획', 'QA', '개발', '퍼블', 'NP', '디자인'];
 /** 테스터 계정 (이름에 '테스터') — 총원 · 파트 인원 · 부재 비율에서 뺀다 (서버 isTester_와 같은 규칙) */
+const MEMO_MAX = 2000; // 업무 · 중요 일정 메모 글자 수 (서버 Code.gs와 같게)
 const CROWD_PERCENT = 20; // 서버와 같게: 총원(테스터 제외) 중 이 비율 이상이 같은 날 부재하면 안내 (사유 필수는 아님)
 const isTester = (u) => String((u && u.name) || '').includes('테스터');
 const TASK_PARTS = ['전체', ...PARTS, 'PM']; // 업무 일정의 파트 ('전체' · 'PM' 업무는 PM만 등록. '전체'는 모든 파트 공통 업무)
@@ -1803,7 +1809,7 @@ function taskItem(t) {
         <span class="muted small" style="font-weight:500">${fmtRange(t)}${t.time ? ' ' + esc(t.time) : ''}</span>
         ${late ? '<span class="badge overdue">기한 지남</span>' : t.status === '지연' ? '<span class="badge overdue">지연</span>' : ''}</div>
       <div class="meta">${esc(t.category)}${t.canEdit ? '' : ' · ' + esc(t.status)}${names ? ' · 담당 ' + names : ''}${t.visibility === 'part' ? ' · 파트 내부' : t.visibility === 'ds' ? ' · <b>DS직원만</b>' : t.visibility === 'assignees' ? ' · <b>담당자만</b>' : t.visibility === 'private' ? ' · <b>나만 보기</b>' : ''}</div>
-      ${t.memo ? `<div class="meta" style="white-space:pre-wrap">${esc(t.memo)}</div>` : ''}
+      ${t.memo ? memoBlock(t.memo) : ''}
       ${(t.absences || []).length ? `<div class="absent-box">⚠ 담당자 부재: ${t.absences.map(esc).join(', ')}</div>` : ''}
     </div>
     ${t.canEdit || t.endDate >= todayStr() ? `<div class="actions">
@@ -2032,7 +2038,7 @@ function openTaskForm(id, date, copyId) {
           <div class="muted small" data-repinfo style="margin-top:6px"></div>
         </div></div>`}
       <div class="field" data-afield><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div><div data-absent></div></div>
-      <div class="field"><label>메모</label><textarea name="memo" rows="3" maxlength="300" placeholder="링크, 참고사항">${esc(f.memo)}</textarea></div>
+      <div class="field"><label>메모</label><textarea name="memo" rows="3" maxlength="${MEMO_MAX}" data-grow placeholder="링크, 참고사항, 업무 내역 (길게 써도 돼요)">${esc(f.memo)}</textarea></div>
       ${isAdmin() && !ex ? `<label class="toggle" style="color:var(--text)"><input type="checkbox" name="asEvent">
         <span><b style="color:var(--evt)">★ 중요 일정으로 등록</b> <span class="muted small">— 업무 대신 중요 일정으로 저장돼서 모든 직원에게 보여요 (제목 · 날짜 · 시간 · 담당자 · 메모)</span></span></label>` : ''}
     </div>
@@ -2286,7 +2292,7 @@ function evtItem(e) {
   const lines = [fmtShort(e.startDate), e.endDate !== e.startDate ? '~ ' + fmtShort(e.endDate) : '', e.time || ''].filter(Boolean);
   return `<div class="card evt-item ${e.endDate < todayStr() ? 'past' : ''}" style="${e.endDate < todayStr() ? 'opacity:.6' : ''}">
     <div class="when">${lines.map((x, i) => `<div${i ? ' class="sub"' : ''}>${i ? '' : '★ '}${esc(x)}</div>`).join('')}</div>
-    <div class="what"><b>${esc(e.title)}</b>${(e.assignees || []).length ? `<div class="small">담당 ${e.assignees.map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ')}</div>` : ''}${e.memo ? `<div class="muted small" style="white-space:pre-wrap">${esc(e.memo)}</div>` : ''}</div>
+    <div class="what"><b>${esc(e.title)}</b>${(e.assignees || []).length ? `<div class="small">담당 ${e.assignees.map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ')}</div>` : ''}${e.memo ? memoBlock(e.memo, 'muted small') : ''}</div>
     ${isAdmin() || e.endDate >= todayStr() ? `<div class="actions evt-actions">${e.endDate >= todayStr() ? `<button class="btn sm ghost cal-add" data-act="toCal" data-v="event:${e.id}" title="내 캘린더에 추가" aria-label="내 캘린더에 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/></svg></button>` : ''}
       ${isAdmin() ? `<button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
       <button class="btn sm danger" data-act="delEvent" data-v="${e.id}">삭제</button>` : ''}</div>` : ''}</div>`;
@@ -2318,7 +2324,7 @@ function openEventForm(id, date) {
       </div>
       <div class="field"><label>시간 <span class="muted" style="font-weight:400">선택</span></label><input name="time" maxlength="30" value="${ex ? esc(ex.time) : ''}" placeholder="예: 14:00~16:00"></div>
       <div class="field"><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 30명 · 담당자에게 따로 알림</span></label><div class="assignee-box" data-assignees></div></div>
-      <div class="field"><label>내용 <span class="muted" style="font-weight:400">선택</span></label><textarea name="memo" rows="3" maxlength="300" placeholder="장소, 참석 대상 등">${ex ? esc(ex.memo) : ''}</textarea></div>
+      <div class="field"><label>내용 <span class="muted" style="font-weight:400">선택</span></label><textarea name="memo" rows="3" maxlength="${MEMO_MAX}" data-grow placeholder="장소, 참석 대상, 업무 내역 등">${ex ? esc(ex.memo) : ''}</textarea></div>
       <p class="muted small">등록하면 모든 직원의 캘린더에 ★로 표시됩니다.</p>
     </div>
     <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span>
@@ -3093,6 +3099,24 @@ function viewHolidays() {
    모달
    ========================================================= */
 let $modal = null, onDismiss = null;
+/** 메모 칸: 글이 길어지면 칸이 같이 커지고(화면 60%까지), 아래에 글자 수 */
+function growArea(ta) {
+  const cnt = document.createElement('div');
+  cnt.className = 'muted small memo-count';
+  ta.after(cnt);
+  const fit = () => {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight + 2, window.innerHeight * 0.6) + 'px';
+    cnt.textContent = ta.value.length > 200 ? `${ta.value.length.toLocaleString()} / ${ta.maxLength.toLocaleString()}자` : '';
+  };
+  ta.addEventListener('input', fit);
+  requestAnimationFrame(fit);
+}
+/** 목록의 긴 메모는 4줄까지만 보이고 '더 보기'로 펼침 */
+function memoBlock(memo, cls = 'meta') {
+  const long = memo.length > 160 || memo.split('\n').length > 4;
+  return `<div class="${cls}${long ? ' memo-clamp' : ''}" style="white-space:pre-wrap">${esc(memo)}</div>${long ? '<button type="button" class="memo-more" data-act="memoMore">더 보기</button>' : ''}`;
+}
 function openModal(html, dismiss) {
   closeModal();
   $modal = document.createElement('div');
@@ -3102,6 +3126,7 @@ function openModal(html, dismiss) {
   document.body.appendChild($modal);
   onDismiss = dismiss || null;
   $modal.querySelectorAll('[data-close]').forEach((b) => (b.onclick = dismissModal));
+  $modal.querySelectorAll('textarea[data-grow]').forEach(growArea);
   return $modal;
 }
 function closeModal() {
@@ -3297,6 +3322,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-05', items: [
+    { x: '업무 · 중요 일정 메모를 2,000자까지 쓸 수 있어요. 쓰는 만큼 칸이 커지고 저장 버튼은 아래에 고정돼요. 목록에서 긴 메모는 [더 보기]로 펼쳐요.' },
     { x: '업무 일정의 마감 색을 분홍에서 자홍(보라빛 분홍)으로 바꿨어요. 배포(빨강)와 한눈에 구분돼요.' },
     { x: "요청함 마감일이 업무 일정에 '[요청함] 제목'으로 자동 표시돼요. 전체 대상이면 모두, 파트·직접 지정이면 대상자에게만 보이고, 마감하면 완료로 바뀌어요." },
   ] },
@@ -4198,6 +4224,7 @@ document.addEventListener('click', (e) => {
     case 'navMore': openNavMore(); break;
     case 'a2hs': addToHome(); break;
     case 'toCal': openToCal(v); break;
+    case 'memoMore': { const m = t.previousElementSibling; const shut = m.classList.toggle('memo-clamp'); t.textContent = shut ? '더 보기' : '접기'; break; }
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
     case 'tab': goTab(v); break;
     case 'month': {
