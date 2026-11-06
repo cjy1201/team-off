@@ -314,6 +314,9 @@
   .guide h4:first-child { margin-top: 4px; }
   .guide ul { margin: 0; padding-left: 18px; }
   .guide li { margin: 3px 0; line-height: 1.5; }
+  .guide-old { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px; }
+  .guide-old > summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var(--primary); padding: 4px 0; }
+  .guide-old[open] > summary { margin-bottom: 4px; }
   .guide .gdate { color: var(--muted); font-weight: 600; font-size: 12px; margin-left: 6px; }
   .whoami.btn { padding: 4px 8px; font-weight: 500; }
   /* 업무 일정 분류 색상 (0 개발 · 1 배포 · 2 테스트 · 3 회의/리뷰 · 4 마감 · 5 인프라 · 6 기타)
@@ -3453,7 +3456,12 @@ function openGuide() {
   openModal(`<header><h3>사용 안내</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content guide">
       <div class="section-title" style="margin-top:4px">업데이트 내역</div>
-      ${UPDATES.filter((u) => u.items.some((i) => okFor(i.r))).map((u) => `<h4>${md(u.d)}</h4>${list(u.items)}`).join('')}
+      ${(() => { // 최근 3개 날짜만 펼치고, 예전 내역은 접어 둠
+        const ups = UPDATES.filter((u) => u.items.some((i) => okFor(i.r)));
+        const show = (arr) => arr.map((u) => `<h4>${md(u.d)}</h4>${list(u.items)}`).join('');
+        const old = ups.slice(3);
+        return show(ups.slice(0, 3)) + (old.length ? `<details class="guide-old"><summary>이전 업데이트 ${old.length}건 보기 <span class="muted small">(${md(old[old.length - 1].d)} ~ ${md(old[0].d)})</span></summary>${show(old)}</details>` : '');
+      })()}
       <div class="section-title">기능 안내 <span class="muted small">${esc(roleLabel(S.me))} 기준</span></div>
       ${GUIDE.filter((g) => okFor(g.r)).map((g) => `<h4>${esc(g.t)}</h4>${list(g.items)}`).join('')}
     </div>`);
