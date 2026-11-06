@@ -1277,16 +1277,23 @@ let S = null;       // { me, users, leaves, holidays } — 서버가 권한에 �
 let screen = 'loading'; // loading | setup | login | app | error
 let screenMsg = '';
 const TAB_KEY = 'team-off-tab'; // 마지막에 보던 탭 (이 기기만)
+/** 체크박스 보기 설정 (나와 관련된 일정만 · 내 업무만 · 겹침 경고만 · 로그인 기록 숨기기) — 새로고침해도 이 기기에 기억 */
+const PREF_KEY = 'team-off-prefs';
+const PREFS = (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+function savePrefs() {
+  const p = { mineOnly: ui.mineOnly, workMine: ui.workMine, warnOnly: !!ui.allFilter.warnOnly, noLogin: HX.noLogin };
+  try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch (e) {}
+}
 const ui = {
   tab: (() => { try { return localStorage.getItem(TAB_KEY) || 'cal'; } catch (e) { return 'cal'; } })(),
   month: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); })(),
-  mineOnly: false,
+  mineOnly: !!PREFS.mineOnly,
   part: '', // PM 파트 필터
-  allFilter: { member: '', month: '', warnOnly: false },
+  allFilter: { member: '', month: '', warnOnly: !!PREFS.warnOnly },
   holYear: new Date().getFullYear(),
   workMonth: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), 1); })(),
   workPart: '',   // 업무 일정 파트 필터 ('' = 전체)
-  workMine: false, // 내 담당·내가 쓴 것만
+  workMine: !!PREFS.workMine, // 내 담당·내가 쓴 것만
   workHidePast: (() => { try { return localStorage.getItem('team-off-work-hide-past') === '1'; } catch (e) { return false; } })(), // 아래 목록에서 지난 업무 숨김 (이 기기에 기억)
   workView: 'cal', // 'cal' 캘린더 / 'timeline' 타임라인
   usageSort: { key: 'name', dir: 'asc' }, // 전체 일정 · 사용 현황 표 정렬
@@ -2998,7 +3005,7 @@ function bindSlotEditor(el, qq, repaint) {
 
 /* ---------- 변경 이력 (PM) ---------- */
 const KIND_LABELS = { leave: '휴가', task: '업무', event: '중요 일정', request: '요청함', user: '팀원', holiday: '공휴일', meal: '식권', login: '로그인' };
-const HX = { loaded: false, loading: false, error: '', items: [], kind: '', who: '', noLogin: true, limit: 200 };
+const HX = { loaded: false, loading: false, error: '', items: [], kind: '', who: '', noLogin: PREFS.noLogin !== false, limit: 200 };
 
 function loadHistory() {
   HX.loading = true; HX.error = '';
@@ -3321,6 +3328,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-06', items: [
+    { x: "'나와 관련된 일정만' · '내 업무만' · '겹침 경고만' · '로그인 기록 숨기기' 체크를 새로고침해도 기억해요. (이 기기 기준)" },
+  ] },
   { d: '2026-11-05', items: [
     { x: '업무 · 중요 일정 메모를 2,000자까지 쓸 수 있어요. 쓰는 만큼 칸이 커지고 저장 버튼은 아래에 고정돼요. 목록에서 긴 메모는 [더 보기]로 펼쳐요.' },
     { x: '업무 일정의 마감 색을 분홍에서 자홍(보라빛 분홍)으로 바꿨어요. 배포(빨강)와 한눈에 구분돼요.' },
@@ -4297,16 +4307,16 @@ document.addEventListener('change', (e) => {
   const t = e.target.closest('[data-act]');
   if (!t) return;
   switch (t.dataset.act) {
-    case 'mineOnly': ui.mineOnly = t.checked; render(); break;
+    case 'mineOnly': ui.mineOnly = t.checked; savePrefs(); render(); break;
     case 'part': ui.part = t.value; ui.allFilter.member = ''; render(); break;
-    case 'wmine': ui.workMine = t.checked; render(); break;
+    case 'wmine': ui.workMine = t.checked; savePrefs(); render(); break;
     case 'wpast': ui.workHidePast = t.checked; try { localStorage.setItem('team-off-work-hide-past', t.checked ? '1' : ''); } catch (e) {} render(); break;
     case 'tstatus': { // 목록에서 바로 상태 변경
       const task = W.tasks.find((x) => x.id === t.dataset.v);
       if (task) runTasks(api('saveTask', Object.assign({}, task, { status: t.value })), `상태를 '${t.value}'(으)로 바꿨습니다.`);
       break;
     }
-    case 'filter': ui.allFilter[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; render(); break;
+    case 'filter': ui.allFilter[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; if (t.dataset.k === 'warnOnly') savePrefs(); render(); break;
     case 'dsToggle': {
       const u = S.users.find((x) => x.email === t.dataset.v);
       run(api('setDsStaff', t.dataset.v, t.checked), `${u ? u.name + '님을 ' : ''}DS직원${t.checked ? '으로 지정' : '에서 해제'}했습니다.`);
@@ -4318,7 +4328,7 @@ document.addEventListener('change', (e) => {
       break;
     }
     case 'psearch': pickBySearch(t.value, false); break; // 입력 후 엔터 · 목록 선택
-    case 'hfilter': HX[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; HX.limit = 200; render(); break;
+    case 'hfilter': HX[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value; HX.limit = 200; if (t.dataset.k === 'noLogin') savePrefs(); render(); break;
     case 'switch':
       if (t.value === '__setup') { Mock._empty(); setToken(''); }
       else if (t.value === '__logout') { if (!Mock._db().users.length) Mock._reset(); setToken(''); }
