@@ -314,6 +314,28 @@
   .guide h4:first-child { margin-top: 4px; }
   .guide ul { margin: 0; padding-left: 18px; }
   .guide li { margin: 3px 0; line-height: 1.5; }
+  .draw-people { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px 8px; }
+  .draw-people .dp-part { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 6px; }
+  .quota-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .quota-row > span { flex: 1; }
+  .quota-row input { width: 70px !important; }
+  .ladder-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px 0; background: var(--surface); }
+  .ladder { display: block; margin: 0 auto; }
+  .ladder .ln { font-size: 12px; font-weight: 700; fill: var(--text); }
+  .ladder .lr { stroke: var(--border); stroke-width: 2; }
+  .ladder .lp { fill: none; stroke: var(--muted); stroke-width: 3; stroke-linejoin: round; opacity: .55; }
+  .ladder .lp.win { stroke: #c026d3; opacity: 1; stroke-width: 4; }
+  .ladder .lb rect { fill: var(--surface); stroke: var(--border); }
+  .ladder .lb text { font-size: 12px; font-weight: 700; fill: var(--muted); }
+  .ladder .lb.win rect { fill: #c026d3; stroke: #c026d3; }
+  .ladder .lb.win text { fill: #fff; }
+  .roulette { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rchip { border: 1px solid var(--border); border-radius: 999px; padding: 5px 10px; font-size: 13px; transition: background .08s; }
+  .rchip.hot { background: var(--primary-weak); border-color: var(--primary); }
+  .rchip.shown[data-win="1"] { background: #c026d3; border-color: #c026d3; color: #fff; font-weight: 700; }
+  .won-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .won { border: 1px solid #c026d3; border-radius: 10px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 6px; }
+  .draw-link { background: none; border: 0; padding: 0; color: var(--primary); font-size: 12px; cursor: pointer; font-weight: 600; }
   .guide-old { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px; }
   .guide-old > summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var(--primary); padding: 4px 0; }
   .guide-old[open] > summary { margin-bottom: 4px; }
@@ -770,6 +792,7 @@ const Mock = (() => {
     });
     return [...days].sort();
   };
+  const lastDrawId = (kind, id) => { const r = (db.draws || []).filter((d) => d.kind === kind && d.targetId === id).sort((a, b) => b.round - a.round)[0]; return r ? r.id : ''; };
   const state = (u) => {
     const pm = u.role === 'pm';
     const leader = (e) => ['pm', 'pl'].includes((db.users.find((x) => x.email === e) || {}).role);
@@ -785,7 +808,7 @@ const Mock = (() => {
           : { email: x.email, name: x.name, part: x.part })),
       leaves: db.leaves.filter(visible).map((l) => (brief(l) ? { ...l, memo: '', conflicts: [], conflictDays: [] } : { ...l, conflicts: conflictsOf(l), conflictDays: conflictDaysOf(l) })),
       holidays: db.holidays,
-      events: db.events || [],
+      events: (db.events || []).map((e) => ({ ...e, drawId: lastDrawId('event', e.id) })),
       designatedBy: [...new Set(db.leaves.filter((l) => l.substitutes.includes(u.email) && l.endDate >= todayStr()).map((l) => nameOf(l.email)))].sort(),
       news: newsOf(u),
       reqPending: Mock._reqState ? Mock._reqState(u).pending : 0,
@@ -1098,7 +1121,92 @@ const Mock = (() => {
       const visible = (t) => (t.visibility === 'private' ? t.createdBy === u.email : t.visibility === 'ds' ? pm || !!u.ds || t.createdBy === u.email
         : t.visibility === 'assignees' ? t.createdBy === u.email || (t.assignees || []).includes(u.email) : t.visibility !== 'part' || pm || t.part === '전체' || u.part === t.part);
       const editable = (t) => (t.visibility === 'private' ? t.createdBy === u.email : visible(t) && (pm || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part)));
-      return { tasks: (db.tasks || []).filter(visible).map((t) => ({ ...t, canEdit: editable(t), absences: this._absences(u, t) })) };
+      return { tasks: (db.tasks || []).filter(visible).map((t) => ({ ...t, canEdit: editable(t), absences: this._absences(u, t), drawId: lastDrawId('task', t.id) })) };
+    },
+    // 사다리 추첨 (서버 Code.gs runDraw · replaceDraw · getDraw와 같은 규칙)
+    _drawView(u, d) {
+      const person = (e) => { const x = db.users.find((y) => y.email === e) || {}; return { email: e, name: x.name || e, part: x.part || (x.role === 'pm' ? 'PM' : '') }; };
+      const rounds = (db.draws || []).filter((r) => r.kind === d.kind && r.targetId === d.targetId).sort((a, b) => a.round - b.round);
+      return { ...d, by: nameOf(d.by), candidates: d.candidates.map(person), picked: d.picked.map(person), fixed: d.fixed.map(person),
+        excluded: d.excluded.map((x) => ({ ...person(x.email), why: x.why })), latest: rounds[rounds.length - 1].id === d.id, canManage: u.role === 'pm',
+        rounds: rounds.map((r) => ({ id: r.id, round: r.round, at: r.at, note: r.note, picked: r.picked.map((e) => person(e).name) })) };
+    },
+    _drawTarget(kind, id) {
+      const row = ((kind === 'event' ? db.events : db.tasks) || []).find((x) => x.id === id);
+      need(row, '일정을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.');
+      row.assignees = row.assignees || [];
+      return { row, max: kind === 'event' ? 30 : 10 };
+    },
+    runDraw(token, i) {
+      const u = admin(token); db.draws = db.draws || [];
+      const { row, max } = this._drawTarget(i.kind, i.id);
+      const prev = db.draws.filter((d) => d.kind === i.kind && d.targetId === row.id).sort((a, b) => b.round - a.round)[0];
+      const fixed = row.assignees.filter((e) => !(prev && prev.picked.includes(e)));
+      const p = i.pool || {}, pt = (x) => x.part || (x.role === 'pm' ? 'PM' : '');
+      const pool = p.mode === 'people' ? (p.emails || []) : db.users.filter((x) => !isTester(x) && (p.mode === 'ds' ? !!x.ds : p.mode === 'parts' ? (p.parts || []).includes(pt(x)) : true)).map((x) => x.email);
+      const cands = pool.filter((e) => !fixed.includes(e));
+      need(cands.length, '후보가 없습니다. 후보를 다시 고르세요.');
+      const excluded = [], ex = (e, why) => { if (cands.includes(e) && !excluded.some((x) => x.email === e)) excluded.push({ email: e, why }); };
+      if (i.skipLeave !== false) db.leaves.forEach((l) => { if (l.startDate <= row.endDate && row.startDate <= l.endDate) ex(l.email, `휴가 (${l.type})`); });
+      const recent = Math.min(5, +i.recent || 0);
+      if (recent) {
+        const last = {};
+        db.draws.forEach((d) => { if (d.kind === i.kind && d.targetId === row.id) return; const k = d.kind + d.targetId; if (!last[k] || d.round > last[k].round) last[k] = d; });
+        Object.values(last).sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, recent).forEach((d) => d.picked.forEach((e) => ex(e, '최근 당첨')));
+      }
+      const elig = cands.filter((e) => !excluded.some((x) => x.email === e));
+      const shuffle = (a) => a.map((x) => [Math.random(), x]).sort((a2, b2) => a2[0] - b2[0]).map((x) => x[1]);
+      const q = i.quota || {}, quota = {};
+      let picked = [];
+      if (Object.values(q).some((n) => +n > 0)) {
+        Object.entries(q).forEach(([part, n]) => {
+          n = Math.floor(+n || 0); if (!n) return;
+          const inP = elig.filter((e) => pt(db.users.find((x) => x.email === e) || {}) === part);
+          need(inP.length >= n, `${part} 후보가 ${inP.length}명이라 ${n}명을 뽑을 수 없습니다.`);
+          quota[part] = n; picked = picked.concat(shuffle(inP).slice(0, n));
+        });
+      } else {
+        const n = Math.floor(+i.count || 0);
+        need(n >= 1, '뽑을 인원을 1명 이상 넣으세요.');
+        need(elig.length >= n, `추첨할 수 있는 후보가 ${elig.length}명이라 ${n}명을 뽑을 수 없습니다.`);
+        picked = shuffle(elig).slice(0, n);
+      }
+      need(fixed.length + picked.length <= max, `담당자는 최대 ${max}명이에요. (지금 담당자 ${fixed.length}명 + 뽑을 인원 ${picked.length}명)`);
+      row.assignees = fixed.concat(picked);
+      const d = { id: 'D' + Date.now(), kind: i.kind, targetId: row.id, title: row.title, date: row.startDate, round: prev ? prev.round + 1 : 1,
+        pool: { mode: p.mode || 'all', parts: p.parts || [], skipLeave: i.skipLeave !== false, recent, count: picked.length },
+        candidates: cands, excluded, quota, picked, fixed, note: prev ? '다시 추첨' : '', by: u.email, at: new Date().toISOString() };
+      db.draws.push(d);
+      log(u, i.kind, '추첨', '', `${row.title} · ${d.round}회차 · 후보 ${cands.length}명 중 ${picked.length}명: ${picked.map(nameOf).join(', ')}`);
+      push(u, picked, `${row.title}(${fmtShort(row.startDate)}) 담당자로 뽑혔어요 (사다리 추첨)`, 'draw:' + d.id);
+      push(u, cands.filter((e) => !picked.includes(e)), `${row.title}(${fmtShort(row.startDate)}) 추첨 결과가 나왔어요`, 'draw:' + d.id);
+      persist(); return { draw: this._drawView(u, d) };
+    },
+    replaceDraw(token, id, email) {
+      const u = admin(token);
+      const d = (db.draws || []).find((x) => x.id === id);
+      need(d, '추첨 기록을 찾을 수 없습니다.');
+      need(!db.draws.some((x) => x.kind === d.kind && x.targetId === d.targetId && x.round > d.round), '마지막 회차에서만 바꿀 수 있습니다.');
+      need(d.picked.includes(email), '당첨자가 아닙니다.');
+      const { row } = this._drawTarget(d.kind, d.targetId);
+      const pt = (e) => { const x = db.users.find((y) => y.email === e) || {}; return x.part || (x.role === 'pm' ? 'PM' : ''); };
+      const excluded = d.excluded.concat([{ email, why: '교체로 빠짐' }]);
+      const pool = d.candidates.filter((e) => !d.picked.includes(e) && !excluded.some((x) => x.email === e) && !row.assignees.includes(e) && (!Object.keys(d.quota).length || pt(e) === pt(email)));
+      need(pool.length, '대신 뽑을 후보가 없습니다.');
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      row.assignees = row.assignees.filter((e) => e !== email).concat([pick]);
+      const nd = { ...d, id: 'D' + Date.now(), round: d.round + 1, excluded, picked: d.picked.map((e) => (e === email ? pick : e)), note: `교체: ${nameOf(email)} → ${nameOf(pick)}`, by: u.email, at: new Date().toISOString() };
+      db.draws.push(nd);
+      log(u, d.kind, '추첨 교체', '', `${d.title} · ${nd.round}회차 · ${nd.note}`);
+      push(u, [pick], `${d.title}(${fmtShort(d.date)}) 담당자로 뽑혔어요 (사다리 추첨 · 교체)`, 'draw:' + nd.id);
+      persist(); return { draw: this._drawView(u, nd) };
+    },
+    getDraw(token, id) {
+      const u = auth(token);
+      const d = (db.draws || []).find((x) => x.id === id);
+      need(d, '추첨 기록을 찾을 수 없습니다.');
+      need(u.role === 'pm' || d.candidates.includes(u.email) || d.fixed.includes(u.email), '이 추첨의 후보가 아니라서 볼 수 없습니다.');
+      return { draw: this._drawView(u, d) };
     },
     checkTaskAbsence(token, i) {
       const u = auth(token);
@@ -1818,7 +1926,7 @@ function taskItem(t) {
       <div class="title"><span class="badge">${esc(t.part)}</span> ${esc(t.title)}${t.series ? ' <span class="muted small" title="반복 일정">↻</span>' : ''}
         <span class="muted small" style="font-weight:500">${fmtRange(t)}${t.time ? ' ' + esc(t.time) : ''}</span>
         ${late ? '<span class="badge overdue">기한 지남</span>' : t.status === '지연' ? '<span class="badge overdue">지연</span>' : ''}</div>
-      <div class="meta">${esc(t.category)}${t.canEdit ? '' : ' · ' + esc(t.status)}${names ? ' · 담당 ' + names : ''}${t.visibility === 'part' ? ' · 파트 내부' : t.visibility === 'ds' ? ' · <b>DS직원만</b>' : t.visibility === 'assignees' ? ' · <b>담당자만</b>' : t.visibility === 'private' ? ' · <b>나만 보기</b>' : ''}</div>
+      <div class="meta">${esc(t.category)}${t.canEdit ? '' : ' · ' + esc(t.status)}${names ? ' · 담당 ' + names : ''}${t.visibility === 'part' ? ' · 파트 내부' : t.visibility === 'ds' ? ' · <b>DS직원만</b>' : t.visibility === 'assignees' ? ' · <b>담당자만</b>' : t.visibility === 'private' ? ' · <b>나만 보기</b>' : ''}${t.drawId ? ` <button class="draw-link" data-act="drawView" data-v="${t.drawId}">· 추첨 결과</button>` : ''}</div>
       ${t.memo ? memoBlock(t.memo) : ''}
       ${(t.absences || []).length ? `<div class="absent-box">⚠ 담당자 부재: ${t.absences.map(esc).join(', ')}</div>` : ''}
     </div>
@@ -2047,7 +2155,8 @@ function openTaskForm(id, date, copyId) {
             <select name="repOff"><option value="skip">건너뛰기</option><option value="next">다음 영업일로</option><option value="prev">이전 영업일로</option><option value="keep">그대로 두기</option></select></div>
           <div class="muted small" data-repinfo style="margin-top:6px"></div>
         </div></div>`}
-      <div class="field" data-afield><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div><div data-absent></div></div>
+      <div class="field" data-afield><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 ${MAX_ASSIGNEES}명 · 다른 파트도 가능</span></label><div class="assignee-box" data-assignees></div><div data-absent></div>
+        ${isAdmin() && ex ? `<div style="margin-top:6px"><button type="button" class="btn sm" data-drawbtn>사다리 추첨으로 뽑기</button>${ex.drawId ? ' <button type="button" class="draw-link" data-act="drawView" data-v="' + ex.drawId + '">지난 추첨 결과</button>' : ''}</div>` : ''}</div>
       <div class="field"><label>메모</label><textarea name="memo" rows="3" maxlength="${MEMO_MAX}" data-grow placeholder="링크, 참고사항, 업무 내역 (길게 써도 돼요)">${esc(f.memo)}</textarea></div>
       ${isAdmin() && !ex ? `<label class="toggle" style="color:var(--text)"><input type="checkbox" name="asEvent">
         <span><b style="color:var(--evt)">★ 중요 일정으로 등록</b> <span class="muted small">— 업무 대신 중요 일정으로 저장돼서 모든 직원에게 보여요 (제목 · 날짜 · 시간 · 담당자 · 메모)</span></span></label>` : ''}
@@ -2093,6 +2202,7 @@ function openTaskForm(id, date, copyId) {
   };
   ed.onchange = checkAbsent;
   if (ex) q('[data-del]').onclick = () => removeTask(ex.id);
+  if (q('[data-drawbtn]')) q('[data-drawbtn]').onclick = () => openDrawForm('task', ex.id);
   // 반복 일정 수정 범위 — 날짜·상태는 이 일정에만, 제목·분류·담당자·메모 등은 고른 범위에 함께 반영
   let scope = '';
   m.querySelectorAll('[data-scope]').forEach((b) => (b.onclick = () => {
@@ -2302,7 +2412,7 @@ function evtItem(e) {
   const lines = [fmtShort(e.startDate), e.endDate !== e.startDate ? '~ ' + fmtShort(e.endDate) : '', e.time || ''].filter(Boolean);
   return `<div class="card evt-item ${e.endDate < todayStr() ? 'past' : ''}" style="${e.endDate < todayStr() ? 'opacity:.6' : ''}">
     <div class="when">${lines.map((x, i) => `<div${i ? ' class="sub"' : ''}>${i ? '' : '★ '}${esc(x)}</div>`).join('')}</div>
-    <div class="what"><b>${esc(e.title)}</b>${(e.assignees || []).length ? `<div class="small">담당 ${e.assignees.map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ')}</div>` : ''}${e.memo ? memoBlock(e.memo, 'muted small') : ''}</div>
+    <div class="what"><b>${esc(e.title)}</b>${(e.assignees || []).length ? `<div class="small">담당 ${e.assignees.map((x) => (x === S.me.email ? `<b>${esc(nameOf(x))}</b>` : esc(nameOf(x)))).join(', ')}${e.drawId ? ` <button class="draw-link" data-act="drawView" data-v="${e.drawId}">· 추첨 결과</button>` : ''}</div>` : ''}${e.memo ? memoBlock(e.memo, 'muted small') : ''}</div>
     ${isAdmin() || e.endDate >= todayStr() ? `<div class="actions evt-actions">${e.endDate >= todayStr() ? `<button class="btn sm ghost cal-add" data-act="toCal" data-v="event:${e.id}" title="내 캘린더에 추가" aria-label="내 캘린더에 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/></svg></button>` : ''}
       ${isAdmin() ? `<button class="btn sm" data-act="editEvent" data-v="${e.id}">수정</button>
       <button class="btn sm danger" data-act="delEvent" data-v="${e.id}">삭제</button>` : ''}</div>` : ''}</div>`;
@@ -2333,7 +2443,8 @@ function openEventForm(id, date) {
         <div class="field"><label>종료일</label><input type="date" name="endDate" value="${ex ? ex.endDate : d0}"></div>
       </div>
       <div class="field"><label>시간 <span class="muted" style="font-weight:400">선택</span></label><input name="time" maxlength="30" value="${ex ? esc(ex.time) : ''}" placeholder="예: 14:00~16:00"></div>
-      <div class="field"><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 30명 · 담당자에게 따로 알림</span></label><div class="assignee-box" data-assignees></div></div>
+      <div class="field"><label>담당자 <span class="muted" style="font-weight:400">선택 · 최대 30명 · 담당자에게 따로 알림</span></label><div class="assignee-box" data-assignees></div>
+        ${ex ? `<div style="margin-top:6px"><button type="button" class="btn sm" data-drawbtn>사다리 추첨으로 뽑기</button>${ex.drawId ? ' <button type="button" class="draw-link" data-act="drawView" data-v="' + ex.drawId + '">지난 추첨 결과</button>' : ''}</div>` : ''}</div>
       <div class="field"><label>내용 <span class="muted" style="font-weight:400">선택</span></label><textarea name="memo" rows="3" maxlength="${MEMO_MAX}" data-grow placeholder="장소, 참석 대상, 업무 내역 등">${ex ? esc(ex.memo) : ''}</textarea></div>
       <p class="muted small">등록하면 모든 직원의 캘린더에 ★로 표시됩니다.</p>
     </div>
@@ -2343,6 +2454,7 @@ function openEventForm(id, date) {
   const sd = m.querySelector('[name=startDate]'), ed = m.querySelector('[name=endDate]');
   sd.onchange = () => { if (!ed.value || ed.value < sd.value) ed.value = sd.value; ed.min = sd.value; };
   if (ex) m.querySelector('[data-del]').onclick = () => removeEvent(ex.id);
+  if (ex) m.querySelector('[data-drawbtn]').onclick = () => openDrawForm('event', ex.id);
   const assignees = ex && ex.assignees ? ex.assignees.slice() : [];
   renderAssignees(m.querySelector('[data-assignees]'), assignees, '', null, 30);
   m.querySelector('[data-save]').onclick = () => run(api('saveEvent', {
@@ -2355,6 +2467,212 @@ async function removeEvent(id) {
   if (!e) return;
   const ok = await confirmBox('중요 일정 삭제', `<p>${esc(evtWhen(e))} ${esc(e.title)}<br>삭제할까요? 모든 직원의 캘린더에서 사라집니다.</p>`, '삭제', true);
   if (ok) run(api('deleteEvent', id), '삭제했습니다.');
+}
+
+/* ---------- 사다리 추첨 (PM: 업무 일정 · 중요 일정의 담당자를 랜덤으로 뽑기, 결과는 후보 전원이 봄) ---------- */
+const drawPart = (u) => (u && (u.part || (u.role === 'pm' ? 'PM' : ''))) || '';
+function openDrawForm(kind, id) {
+  const t = kind === 'event' ? (S.events || []).find((e) => e.id === id) : (W.tasks || []).find((x) => x.id === id);
+  if (!t) return toast('일정을 찾을 수 없어요. 새로고침 후 다시 시도하세요.', true);
+  const max = kind === 'event' ? 30 : MAX_ASSIGNEES;
+  const people = S.users.filter((u) => !isTester(u));
+  const parts = [...new Set(people.map(drawPart).filter(Boolean))];
+  const f = { mode: 'all', parts: [], emails: [], byPart: false, count: 1, quota: {}, skipLeave: true, recent: 0 };
+  let prevPicked = [];
+  const fixedOf = () => (t.assignees || []).filter((e) => !prevPicked.includes(e));
+  const userOf = (e) => S.users.find((u) => u.email === e) || {};
+  const pool = () => (f.mode === 'people' ? f.emails.slice()
+    : people.filter((u) => (f.mode === 'ds' ? u.ds : f.mode === 'parts' ? f.parts.includes(drawPart(u)) : true)).map((u) => u.email)).filter((e) => !fixedOf().includes(e));
+  const onLeave = (e) => f.skipLeave && S.leaves.some((l) => l.email === e && l.startDate <= t.endDate && t.startDate <= l.endDate);
+  const m = openModal(`<header><h3>사다리 추첨</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="infobox" style="margin:0 0 12px"><b>${esc(t.title)}</b> · ${esc(fmtRange(t))}${t.time ? ' ' + esc(t.time) : ''}<div class="small" data-dfixed></div></div>
+      <div class="field"><label>후보</label>
+        <div class="seg" data-dmode>${[['all', '전체'], ['parts', '파트'], ['ds', 'DS직원'], ['people', '직접 고르기']].map(([k, l]) => `<button type="button" data-m="${k}">${l}</button>`).join('')}</div>
+        <div data-dparts class="seg" style="margin-top:8px">${parts.map((p) => `<button type="button" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
+        <div data-dpeople style="margin-top:8px">
+          <div style="display:flex;gap:6px;margin-bottom:6px"><button type="button" class="btn sm" data-dsall>DS직원 모두</button><button type="button" class="btn sm" data-allp>모두</button><button type="button" class="btn sm" data-nonep>모두 해제</button></div>
+          <div class="draw-people">${parts.concat(['']).map((p) => { const us = people.filter((u) => drawPart(u) === p); return us.length ? `<div class="dp-part">${esc(p || '파트 없음')}</div>${us.map((u) => `<label class="toggle"><input type="checkbox" data-e="${esc(u.email)}"> ${esc(u.name)}${u.ds ? ' <span class="muted small">DS</span>' : ''}</label>`).join('')}` : ''; }).join('')}</div>
+        </div>
+      </div>
+      <div class="field"><label>뽑는 방식</label>
+        <div class="seg" data-dhow><button type="button" data-h="count">인원 수</button><button type="button" data-h="part">파트별 인원</button></div>
+        <div data-dcount style="margin-top:8px;display:flex;align-items:center;gap:8px"><input type="number" name="dcount" min="1" max="${max}" value="1" style="width:90px"> 명</div>
+        <div data-dquota style="margin-top:8px"></div>
+      </div>
+      <div class="field"><label>제외</label>
+        <label class="toggle" style="color:var(--text)"><input type="checkbox" name="dleave" checked> 그날 휴가인 사람 빼기</label>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span class="small">최근 당첨자 빼기</span>
+          <select name="drecent" style="width:auto">${[[0, '안 함'], [1, '최근 1번 추첨'], [2, '최근 2번 추첨'], [3, '최근 3번 추첨'], [5, '최근 5번 추첨']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+      </div>
+      <div class="infobox" data-dsum style="margin:4px 0 0"></div>
+      <p class="muted small" style="margin:8px 0 0">뽑힌 사람은 이 일정의 담당자로 들어가고 소식이 가요. 결과는 후보 전원이 볼 수 있어요. 수정 창에서 바꾼 내용이 있으면 먼저 저장하세요.</p>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-go>추첨 시작</button></footer>`);
+  const q = (sel) => m.querySelector(sel);
+  const paint = () => {
+    m.querySelectorAll('[data-m]').forEach((b) => b.classList.toggle('on', b.dataset.m === f.mode));
+    m.querySelectorAll('[data-p]').forEach((b) => b.classList.toggle('on', f.parts.includes(b.dataset.p)));
+    m.querySelectorAll('[data-h]').forEach((b) => b.classList.toggle('on', (b.dataset.h === 'part') === f.byPart));
+    q('[data-dparts]').style.display = f.mode === 'parts' ? '' : 'none';
+    q('[data-dpeople]').style.display = f.mode === 'people' ? '' : 'none';
+    m.querySelectorAll('[data-e]').forEach((c) => (c.checked = f.emails.includes(c.dataset.e)));
+    q('[data-dcount]').style.display = f.byPart ? 'none' : 'flex';
+    const list = pool(), elig = list.filter((e) => !onLeave(e));
+    const byPart = {};
+    elig.forEach((e) => { const p = drawPart(userOf(e)) || '파트 없음'; byPart[p] = (byPart[p] || 0) + 1; });
+    const qb = q('[data-dquota]');
+    qb.style.display = f.byPart ? '' : 'none';
+    if (f.byPart) {
+      const keys = Object.keys(byPart);
+      const want = keys.map((p) => `${p}:${byPart[p]}`).join();
+      if (qb.dataset.k !== want) {
+        qb.dataset.k = want;
+        qb.innerHTML = keys.length ? keys.map((p) => `<div class="quota-row"><span>${esc(p)} <span class="muted small">후보 ${byPart[p]}명</span></span><input type="number" min="0" max="${byPart[p]}" data-qp="${esc(p)}" value="${f.quota[p] || 0}"> 명</div>`).join('') : '<div class="muted small">후보가 없어요.</div>';
+        qb.querySelectorAll('[data-qp]').forEach((inp) => (inp.oninput = () => { f.quota[inp.dataset.qp] = Math.max(0, +inp.value || 0); sum(); }));
+      }
+    }
+    const fixed = fixedOf();
+    q('[data-dfixed]').innerHTML = `${fixed.length ? '고정 담당자: ' + fixed.map((e) => esc(nameOf(e))).join(', ') + ' <span class="muted">(그대로 남아요)</span>' : '지금 고정 담당자 없음'}${prevPicked.length ? `<br>지난 추첨 당첨자 ${prevPicked.length}명은 빠지고 새로 뽑아요.` : ''}`;
+    sum();
+  };
+  const want = () => (f.byPart ? Object.values(f.quota).reduce((a, b) => a + (+b || 0), 0) : f.count);
+  const sum = () => {
+    const list = pool(), leave = list.filter(onLeave);
+    const n = want(), total = fixedOf().length + n;
+    q('[data-dsum]').innerHTML = `후보 <b>${list.length}명</b>${leave.length ? ` <span class="muted small">(휴가 ${leave.length}명 제외: ${leave.map((e) => esc(nameOf(e))).join(', ')})</span>` : ''} 중 <b>${n}명</b> 뽑기
+      <div class="small" style="color:${total > max ? 'var(--danger)' : 'var(--muted)'}">추첨 후 담당자 ${total}명 / 최대 ${max}명${f.recent ? ' · 최근 당첨자는 추첨할 때 빠져요' : ''}</div>`;
+  };
+  m.querySelectorAll('[data-m]').forEach((b) => (b.onclick = () => { f.mode = b.dataset.m; paint(); }));
+  m.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => { const p = b.dataset.p; f.parts = f.parts.includes(p) ? f.parts.filter((x) => x !== p) : f.parts.concat([p]); paint(); }));
+  m.querySelectorAll('[data-h]').forEach((b) => (b.onclick = () => { f.byPart = b.dataset.h === 'part'; paint(); }));
+  m.querySelectorAll('[data-e]').forEach((c) => (c.onchange = () => { f.emails = c.checked ? f.emails.concat([c.dataset.e]) : f.emails.filter((x) => x !== c.dataset.e); paint(); }));
+  q('[data-dsall]').onclick = () => { f.emails = [...new Set(f.emails.concat(people.filter((u) => u.ds).map((u) => u.email)))]; paint(); };
+  q('[data-allp]').onclick = () => { f.emails = people.map((u) => u.email); paint(); };
+  q('[data-nonep]').onclick = () => { f.emails = []; paint(); };
+  q('[name=dcount]').oninput = (e) => { f.count = Math.max(0, Math.floor(+e.target.value || 0)); sum(); };
+  q('[name=dleave]').onchange = (e) => { f.skipLeave = e.target.checked; paint(); };
+  q('[name=drecent]').onchange = (e) => { f.recent = +e.target.value; sum(); };
+  q('[data-go]').onclick = async () => {
+    const quota = {};
+    if (f.byPart) Object.keys(f.quota).forEach((p) => { if (f.quota[p] > 0) quota[p === '파트 없음' ? '' : p] = f.quota[p]; });
+    if (f.mode === 'parts' && !f.parts.length) return toast('후보 파트를 고르세요.', true);
+    if (f.mode === 'people' && !f.emails.length) return toast('후보를 1명 이상 고르세요.', true);
+    const btn = q('[data-go]'); btn.disabled = true; btn.textContent = '추첨 중...';
+    try {
+      const r = await api('runDraw', { kind, id, pool: { mode: f.mode, parts: f.parts, emails: f.emails }, count: f.count, quota: f.byPart ? quota : null, skipLeave: f.skipLeave, recent: f.recent });
+      openDrawShow(r.draw, true, true);
+    } catch (e) { btn.disabled = false; btn.textContent = '추첨 시작'; toast(e.message || String(e), true); }
+  };
+  paint();
+  if (t.drawId) api('getDraw', t.drawId).then((r) => { if (r.draw.latest) { prevPicked = r.draw.picked.map((x) => x.email); paint(); } }).catch(() => {});
+}
+
+/** 같은 추첨은 늘 같은 사다리 모양 (추첨 id로 만든 난수) */
+function seededRand(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  return () => { h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+}
+const LADDER_MAX = 16; // 이보다 많으면 사다리 대신 이름 카드 뽑기
+function ladderHtml(d) {
+  const ex = d.excluded.map((x) => x.email);
+  const names = d.candidates.filter((c) => !ex.includes(c.email));
+  const won = d.picked.map((x) => x.email);
+  const n = names.length;
+  if (n > LADDER_MAX) {
+    return `<div class="roulette">${names.map((c) => `<span class="rchip" data-re="${esc(c.email)}">${esc(c.name)}</span>`).join('')}</div>`;
+  }
+  const rnd = seededRand(d.id), W2 = 64, top = 40, gap = 24, levels = Math.max(7, n + 3);
+  const rung = [];
+  for (let lv = 0; lv < levels; lv++) { rung[lv] = []; for (let i = 0; i < n - 1; i++) rung[lv][i] = !(i > 0 && rung[lv][i - 1]) && rnd() < 0.5; }
+  const x = (c) => c * W2 + W2 / 2, y = (lv) => top + 12 + lv * gap, bottom = y(levels);
+  const paths = names.map((c, i) => {
+    let col = i; const pts = [[x(col), top]];
+    for (let lv = 0; lv < levels; lv++) {
+      if (rung[lv][col]) { pts.push([x(col), y(lv)], [x(col + 1), y(lv)]); col++; }
+      else if (col > 0 && rung[lv][col - 1]) { pts.push([x(col), y(lv)], [x(col - 1), y(lv)]); col--; }
+    }
+    pts.push([x(col), bottom]);
+    return { c, end: col, win: won.includes(c.email), d: pts.map((p, k) => (k ? 'L' : 'M') + p[0] + ' ' + p[1]).join(' ') };
+  });
+  const endWin = {};
+  paths.forEach((p) => (endWin[p.end] = p.win));
+  const H = bottom + 34, Wd = n * W2;
+  return `<div class="ladder-wrap"><svg class="ladder" width="${Wd}" height="${H}" viewBox="0 0 ${Wd} ${H}">
+    ${names.map((c, i) => `<text x="${x(i)}" y="22" text-anchor="middle" class="ln">${esc(c.name.slice(0, 5))}</text><line x1="${x(i)}" y1="${top}" x2="${x(i)}" y2="${bottom}" class="lr"/>`).join('')}
+    ${rung.map((r, lv) => r.map((on, i) => (on ? `<line x1="${x(i)}" y1="${y(lv)}" x2="${x(i + 1)}" y2="${y(lv)}" class="lr"/>` : '')).join('')).join('')}
+    ${paths.map((p, i) => `<path d="${p.d}" class="lp ${p.win ? 'win' : ''}" data-li="${i}"/>`).join('')}
+    ${names.map((c, i) => `<g class="lb ${endWin[i] ? 'win' : ''}" data-lb="${i}"><rect x="${x(i) - 26}" y="${bottom + 6}" width="52" height="24" rx="6"/><text x="${x(i)}" y="${bottom + 22}" text-anchor="middle">${endWin[i] ? '당첨' : '-'}</text></g>`).join('')}
+  </svg></div>`;
+}
+/** 사다리를 한 줄씩 내려가며 그림 (끝나면 done) */
+function playLadder(root, done) {
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const paths = [...root.querySelectorAll('.lp')];
+  let timers = [];
+  const finish = () => { timers.forEach(clearTimeout); timers = []; root.querySelectorAll('.lp').forEach((p) => { p.style.transition = 'none'; p.style.strokeDashoffset = 0; }); root.querySelectorAll('.lb, .rchip').forEach((b) => b.classList.add('shown')); root.querySelectorAll('.rchip').forEach((c) => c.classList.remove('hot')); done(); };
+  if (paths.length) {
+    paths.forEach((p) => { const L = p.getTotalLength(); p.style.strokeDasharray = L; p.style.strokeDashoffset = L; });
+    if (reduce) { finish(); return finish; }
+    const wrap = root.querySelector('.ladder-wrap');
+    paths.forEach((p, i) => timers.push(setTimeout(() => {
+      p.getBoundingClientRect(); p.style.transition = 'stroke-dashoffset .9s ease-in-out'; p.style.strokeDashoffset = 0;
+      if (wrap) wrap.scrollLeft = Math.max(0, i * 64 - wrap.clientWidth / 2);
+    }, i * 500)));
+    timers.push(setTimeout(finish, paths.length * 500 + 1000));
+    return finish;
+  }
+  const chips = [...root.querySelectorAll('.rchip')];
+  if (!chips.length || reduce) { finish(); return finish; }
+  const winners = chips.filter((c) => c.dataset.win === '1');
+  let k = 0;
+  const spin = setInterval(() => { chips.forEach((c) => c.classList.remove('hot')); chips[Math.floor(Math.random() * chips.length)].classList.add('hot'); }, 90);
+  timers.push(setTimeout(() => { clearInterval(spin); chips.forEach((c) => c.classList.remove('hot')); winners.forEach((c, i) => timers.push(setTimeout(() => c.classList.add('shown'), i * 350))); timers.push(setTimeout(done, winners.length * 350 + 200)); }, 2200));
+  return () => { clearInterval(spin); finish(); };
+}
+function openDrawShow(d, animate, fresh) {
+  const when = fmtShort(d.date), byPart = {};
+  d.picked.forEach((x) => (byPart[x.part || '파트 없음'] = (byPart[x.part || '파트 없음'] || 0) + 1));
+  const m = openModal(`<header><h3>사다리 추첨 결과</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div style="margin-bottom:8px"><b>${esc(d.title)}</b> <span class="muted small">${esc(when)} · ${d.round}회차 · ${esc(d.by)} · ${esc(agoText(d.at))}${d.note ? ' · ' + esc(d.note) : ''}</span></div>
+      <div data-stage>${ladderHtml(d)}</div>
+      <div data-dres class="draw-res" style="display:none">
+        <div class="section-title" style="margin-top:12px">당첨 ${d.picked.length}명 ${Object.keys(d.quota || {}).length ? `<span class="muted small">(${Object.keys(byPart).map((p) => `${esc(p)} ${byPart[p]}`).join(' · ')})</span>` : ''}</div>
+        <div class="won-list">${d.picked.map((x) => `<div class="won"><b>${esc(x.name)}</b> <span class="muted small">${esc(x.part)}</span>${d.canManage && d.latest ? ` <button class="btn sm" data-swap="${esc(x.email)}">교체</button>` : ''}</div>`).join('')}</div>
+        ${d.fixed.length ? `<div class="small" style="margin-top:8px">고정 담당자 (추첨 안 함): ${d.fixed.map((x) => esc(x.name)).join(', ')}</div>` : ''}
+        <details class="guide-old" style="margin-top:10px"><summary>후보 ${d.candidates.length}명 · 제외 ${d.excluded.length}명 보기</summary>
+          <div class="small" style="margin-top:6px">후보: ${d.candidates.map((x) => esc(x.name)).join(', ')}</div>
+          ${d.excluded.length ? `<div class="small" style="margin-top:4px">제외: ${d.excluded.map((x) => `${esc(x.name)} <span class="muted">(${esc(x.why)})</span>`).join(', ')}</div>` : ''}
+          ${d.rounds.length > 1 ? `<div class="small" style="margin-top:8px"><b>회차 기록</b>${d.rounds.map((r) => `<div>${r.round}회차 · ${esc(agoText(r.at))}${r.note ? ' · ' + esc(r.note) : ''} — ${r.picked.map(esc).join(', ')}</div>`).join('')}</div>` : ''}
+        </details>
+        ${d.latest ? '' : '<div class="warnbox" style="margin-top:8px">지난 회차 결과예요. 이후에 다시 추첨하거나 교체했어요.</div>'}
+      </div>
+    </div>
+    <footer><button class="btn" data-replay>사다리 다시 보기</button><button class="btn" data-skip>바로 결과 보기</button><span class="spacer"></span><button class="btn primary" data-close>확인</button></footer>`, fresh ? () => refreshData() : null);
+  if (fresh) m.querySelectorAll('[data-close]').forEach((b) => (b.onclick = () => { closeModal(); refreshData(); }));
+  m.querySelectorAll('.rchip').forEach((c) => (c.dataset.win = d.picked.some((x) => x.email === c.dataset.re) ? '1' : ''));
+  const show = () => { m.querySelector('[data-dres]').style.display = ''; m.querySelector('[data-skip]').style.display = 'none'; m.querySelector('[data-replay]').style.display = ''; };
+  let stop = null;
+  const play = () => {
+    m.querySelector('[data-stage]').innerHTML = ladderHtml(d);
+    m.querySelectorAll('.rchip').forEach((c) => (c.dataset.win = d.picked.some((x) => x.email === c.dataset.re) ? '1' : ''));
+    m.querySelector('[data-skip]').style.display = ''; m.querySelector('[data-replay]').style.display = 'none';
+    stop = playLadder(m.querySelector('[data-stage]'), show);
+  };
+  m.querySelector('[data-skip]').onclick = () => stop && stop();
+  m.querySelector('[data-replay]').onclick = play;
+  if (animate) play(); else { stop = playLadder(m.querySelector('[data-stage]'), show); stop(); }
+  m.querySelectorAll('[data-swap]').forEach((b) => (b.onclick = async () => {
+    const who = d.picked.find((x) => x.email === b.dataset.swap);
+    if (!(await confirmBox('당첨자 교체', `<p><b>${esc(who.name)}</b>님을 빼고 ${Object.keys(d.quota || {}).length ? '같은 파트' : '남은 후보'}에서 1명을 다시 뽑을까요?<br><span class="muted small">빠진 사람은 이번 추첨에서 다시 뽑히지 않아요. 기록에 남아요.</span></p>`, '다시 뽑기'))) return openDrawShow(d, false, fresh);
+    try { const r = await api('replaceDraw', d.id, who.email); toast(`${r.draw.note}`); openDrawShow(r.draw, false, true); }
+    catch (e) { toast(e.message || String(e), true); openDrawShow(d, false, fresh); }
+  }));
+}
+function openDrawView(id) {
+  api('getDraw', id).then((r) => openDrawShow(r.draw, false)).catch((e) => toast(e.message || String(e), true));
 }
 
 /* ---------- 내 일정 ---------- */
@@ -2649,6 +2967,8 @@ function goNews(go) {
     render(); flashDate(val); // 그 날짜 칸으로 스크롤해서 잠깐 강조 (칸을 누르면 상세)
   } else if (kind === 'tab') {
     ui.tab = val; render(); window.scrollTo(0, 0);
+  } else if (kind === 'draw') {
+    openDrawView(val);
   }
 }
 
@@ -3331,6 +3651,10 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-09', items: [
+    { x: '업무 · 중요 일정의 담당자를 사다리 추첨으로 뽑을 수 있어요 (PM). 전체 · 파트 · DS직원 · 직접 고르기로 후보를 정하고, 인원 수나 파트별 인원을 정해요. 그날 휴가인 사람은 빠지고, 최근 당첨자 빼기도 고를 수 있어요.', r: 'pm' },
+    { x: '사다리 추첨 결과는 후보 전원이 볼 수 있어요. 소식이나 일정의 [추첨 결과]를 누르면 사다리를 다시 볼 수 있어요.' },
+  ] },
   { d: '2026-11-06', items: [
     { x: "'나와 관련된 일정만' · '내 업무만' · '겹침 경고만' · '로그인 기록 숨기기' 체크를 새로고침해도 기억해요. (이 기기 기준)" },
   ] },
@@ -4242,6 +4566,7 @@ document.addEventListener('click', (e) => {
     case 'navMore': openNavMore(); break;
     case 'a2hs': addToHome(); break;
     case 'toCal': openToCal(v); break;
+    case 'drawView': openDrawView(v); break;
     case 'memoMore': { const m = t.previousElementSibling; const shut = m.classList.toggle('memo-clamp'); t.textContent = shut ? '더 보기' : '접기'; break; }
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
     case 'tab': goTab(v); break;
