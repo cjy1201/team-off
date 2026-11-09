@@ -314,6 +314,17 @@
   .guide h4:first-child { margin-top: 4px; }
   .guide ul { margin: 0; padding-left: 18px; }
   .guide li { margin: 3px 0; line-height: 1.5; }
+  .early-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .early-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  .early-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .early-table th, .early-table td { border-bottom: 1px solid var(--border); padding: 4px 2px; text-align: center; white-space: nowrap; }
+  .early-table th { font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px 2px; }
+  .early-table .nm { text-align: left; padding-left: 10px; position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 96px; }
+  .early-table .now { background: var(--primary-weak); }
+  .early-table .sum { font-weight: 700; padding-right: 10px; }
+  .early-cell { width: 40px; height: 28px; border: 0; border-radius: 6px; background: none; color: transparent; font-size: 12px; cursor: pointer; }
+  .early-cell:hover { color: var(--muted); background: var(--bg); }
+  .early-cell.on { background: #0d9488; color: #fff; font-weight: 700; }
   .draw-people { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px 8px; }
   .draw-people .dp-part { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 6px; }
   .quota-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
@@ -1123,6 +1134,27 @@ const Mock = (() => {
       const editable = (t) => (t.visibility === 'private' ? t.createdBy === u.email : visible(t) && (pm || t.createdBy === u.email || (u.role === 'pl' && u.part === t.part)));
       return { tasks: (db.tasks || []).filter(visible).map((t) => ({ ...t, canEdit: editable(t), absences: this._absences(u, t), drawId: lastDrawId('task', t.id) })) };
     },
+    // 1시간 조기퇴근권 (서버 Code.gs getEarly · saveEarly · deleteEarly와 같은 규칙)
+    _early(u) { return { items: (db.early || []).map((x) => ({ ...x, name: nameOf(x.email), by: nameOf(x.createdBy) })).sort((a, b) => (a.date < b.date ? 1 : -1)) }; },
+    getEarly(token) { return this._early(admin(token)); },
+    saveEarly(token, i) {
+      const u = admin(token); db.early = db.early || [];
+      const ex = i.id ? db.early.find((x) => x.id === i.id) : null;
+      need(db.users.some((x) => x.email === i.email), '직원을 고르세요.');
+      need(/^\d{4}-\d{2}-\d{2}$/.test(i.date || ''), '날짜를 고르세요.');
+      const dup = db.early.find((x) => x.email === i.email && x.date.slice(0, 7) === i.date.slice(0, 7) && x !== ex);
+      need(!dup, dup && `${nameOf(i.email)}님은 ${Number(i.date.slice(5, 7))}월에 이미 썼어요 (${fmtShort(dup.date)}). 한 달에 한 번만 쓸 수 있어요.`);
+      const row = { id: ex ? ex.id : 'X' + Date.now(), email: i.email, date: i.date, memo: (i.memo || '').trim(), createdAt: ex ? ex.createdAt : new Date().toISOString(), createdBy: ex ? ex.createdBy : u.email };
+      db.early = db.early.filter((x) => x !== ex).concat([row]);
+      log(u, 'early', ex ? '수정' : '등록', i.email, `조기퇴근권 ${fmtShort(i.date)}`);
+      persist(); return this._early(u);
+    },
+    deleteEarly(token, id) {
+      const u = admin(token); const ex = (db.early || []).find((x) => x.id === id);
+      need(ex, '이미 삭제된 기록입니다.');
+      db.early = db.early.filter((x) => x !== ex); log(u, 'early', '삭제', ex.email, `조기퇴근권 ${fmtShort(ex.date)}`);
+      persist(); return this._early(u);
+    },
     // 사다리 추첨 (서버 Code.gs runDraw · replaceDraw · getDraw와 같은 규칙)
     _drawView(u, d) {
       const person = (e) => { const x = db.users.find((y) => y.email === e) || {}; return { email: e, name: x.name || e, part: x.part || (x.role === 'pm' ? 'PM' : '') }; };
@@ -1550,7 +1582,7 @@ function render() {
       </div>
       <nav class="tabs">${tabs.map(([k, v]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${v}${tabBadge(k)}</button>`).join('')}</nav>
     </div></header>
-    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, requests: viewRequests, all: viewAll, members: viewMembers, holidays: viewHolidays, history: viewHistory })[ui.tab]()}</main>
+    <main>${({ cal: viewCalendar, events: viewEvents, work: viewWork, mine: viewMine, requests: viewRequests, all: viewAll, members: viewMembers, early: viewEarly, holidays: viewHolidays, history: viewHistory })[ui.tab]()}</main>
     ${NAV_BOTTOM ? bottomNav(tabs) : ''}`;
   if (document.body && document.body.classList) document.body.classList.toggle('navb', NAV_BOTTOM);
 }
@@ -1581,6 +1613,7 @@ const BN_ICON = {
   holidays: '<path d="M5 21V4M5 4.5h11l-2 3.5 2 3.5H5"/>',
   history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4"/><path d="M12 8v4.5l3 1.8"/>',
   requests: '<path d="M3 13.5h5l1.5 3h5l1.5-3h5"/><path d="M5.5 5h13l2.5 8.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5.5z"/>',
+  early: '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 1.5M9.5 2.5h5M19 5l1.5 1.5"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
 };
 /** 메뉴 옆 숫자 배지 — 요청함: 응답할 요청 수 */
@@ -1588,7 +1621,7 @@ const tabBadge = (k) => (k === 'requests' && S && S.reqPending ? `<span class="t
 /** 보이는 탭 (권한별) — 내 메뉴 순서(S.me.navOrder)대로, 순서에 없는 탭은 기본 순서로 뒤에 */
 function myTabs(defaultOrder) {
   const tabs = [['cal', '캘린더'], ['events', '중요 일정'], ['work', '업무 일정'], ['mine', '내 일정'], ['requests', '요청함']];
-  if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['holidays', '공휴일'], ['history', '변경 이력']);
+  if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['early', '조기퇴근권'], ['holidays', '공휴일'], ['history', '변경 이력']);
   else if (canSeeAll()) tabs.push(['all', '전체 일정']);
   else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
   const order = defaultOrder ? [] : S.me.navOrder || [];
@@ -1597,7 +1630,7 @@ function myTabs(defaultOrder) {
 }
 const NAV_MAIN = 4; // 하단 탭바에 바로 보이는 메뉴 수 (나머지는 '더보기')
 function bottomNav(tabs) {
-  const label = { cal: '캘린더', events: '중요', work: '업무', mine: '내 일정', requests: '요청함', more: '더보기', all: canSeeAll() ? '전체' : '파트', members: '팀원', holidays: '공휴일', history: '이력' };
+  const label = { cal: '캘린더', events: '중요', work: '업무', mine: '내 일정', requests: '요청함', more: '더보기', all: canSeeAll() ? '전체' : '파트', members: '팀원', early: '조기퇴근', holidays: '공휴일', history: '이력' };
   const main = (tabs.length <= NAV_MAIN + 1 ? tabs : tabs.slice(0, NAV_MAIN)).map(([k]) => k);
   const extra = tabs.filter(([k]) => !main.includes(k));
   const items = main.map((k) => [k, label[k], 'tab']);
@@ -3326,8 +3359,99 @@ function bindSlotEditor(el, qq, repaint) {
   if (clr) clr.onclick = () => { qq.slots = []; repaint(); };
 }
 
+/* ---------- 1시간 조기퇴근권 (PM만 기록 · 조회, 한 사람 한 달에 1번) ---------- */
+const E = { loaded: false, loading: false, error: '', items: [], year: new Date().getFullYear() };
+function loadEarly() {
+  if (E.loading) return;
+  E.loading = true;
+  api('getEarly')
+    .then((r) => { E.items = r.items || []; E.loaded = true; E.error = ''; })
+    .catch((e) => { const m = (e && e.message) || String(e); if (m.indexOf('AUTH:') >= 0) return handleError(e); E.error = m; })
+    .finally(() => { E.loading = false; if (screen === 'app' && ui.tab === 'early') render(); });
+}
+async function runEarly(promise, okMsg) {
+  loading(true);
+  try { const r = await promise; E.items = r.items || []; E.loaded = true; closeModal(); render(); toast(okMsg); }
+  catch (e) { handleError(e); }
+  finally { loading(false); }
+}
+const earlyPeople = () => S.users.filter((u) => !isTester(u)).slice().sort((a, b) => {
+  const pa = drawPart(a) || '힣', pb = drawPart(b) || '힣';
+  return pa === pb ? a.name.localeCompare(b.name, 'ko') : pa.localeCompare(pb, 'ko');
+});
+function viewEarly() {
+  if (!E.loaded) {
+    if (!E.error) loadEarly();
+    return E.error ? `<div class="card empty">기록을 불러오지 못했습니다. ${esc(E.error)}<br><button class="btn sm" data-act="earlyReload" style="margin-top:8px">다시 시도</button></div>`
+      : '<div class="card empty">조기퇴근권 기록을 불러오는 중…</div>';
+  }
+  const y = E.year, today = todayStr(), thisYm = today.slice(0, 7);
+  const people = earlyPeople();
+  const used = {};
+  E.items.forEach((x) => (used[x.email + '|' + x.date.slice(0, 7)] = x));
+  const months = Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
+  const thisMonthUsed = people.filter((u) => used[u.email + '|' + thisYm]).length;
+  const yearItems = E.items.filter((x) => x.date.slice(0, 4) === String(y));
+  setTimeout(() => { // 좁은 화면: 이번 달 칸이 보이게 표를 옆으로 밀어 둠
+    const w = document.querySelector('.early-wrap'), th = w && w.querySelector('th.now');
+    if (th) w.scrollLeft = Math.max(0, th.offsetLeft + th.offsetWidth + 50 - w.clientWidth);
+  });
+  return `
+    <div class="section-title" style="margin-top:4px"><span>1시간 조기퇴근권 <span class="muted small">한 사람 한 달에 1번 · PM만 보여요</span></span>
+      <button class="btn primary" data-act="earlyNew">+ 사용 기록</button></div>
+    <div class="infobox" style="margin:0 0 10px">이번 달(${Number(thisYm.slice(5))}월) 사용 <b>${thisMonthUsed}명</b> · 아직 안 쓴 사람 ${people.length - thisMonthUsed}명 <span class="muted small">(테스터 제외)</span></div>
+    <div class="early-nav"><button class="btn sm" data-act="earlyYear" data-v="-1" aria-label="이전 해">‹</button><b>${y}년</b><button class="btn sm" data-act="earlyYear" data-v="1" aria-label="다음 해">›</button>
+      <span class="muted small" style="margin-left:auto">칸을 누르면 기록 · 수정</span></div>
+    <div class="early-wrap"><table class="early-table">
+      <thead><tr><th class="nm">직원</th>${months.map((m) => `<th class="${m === thisYm ? 'now' : ''}">${Number(m.slice(5))}월</th>`).join('')}<th>합계</th></tr></thead>
+      <tbody>${people.map((u) => {
+        const n = months.filter((m) => used[u.email + '|' + m]).length;
+        return `<tr><td class="nm">${esc(u.name)}<span class="muted small"> ${esc(drawPart(u))}</span></td>${months.map((m) => {
+          const x = used[u.email + '|' + m];
+          return `<td class="${m === thisYm ? 'now' : ''}">${x
+            ? `<button class="early-cell on" data-act="earlyEdit" data-v="${x.id}" title="${esc(fmtShort(x.date))}${x.memo ? ' · ' + esc(x.memo) : ''}">${Number(x.date.slice(8))}일</button>`
+            : `<button class="early-cell" data-act="earlyNew" data-v="${esc(u.email)}|${m}" aria-label="${esc(u.name)} ${Number(m.slice(5))}월 기록">+</button>`}</td>`;
+        }).join('')}<td class="sum">${n || ''}</td></tr>`;
+      }).join('')}</tbody></table></div>
+    <div class="section-title">${y}년 사용 기록 <span class="muted small">${yearItems.length}건</span></div>
+    <div class="list">${yearItems.length ? yearItems.map((x) => `<div class="card item" style="cursor:pointer" data-act="earlyEdit" data-v="${x.id}"><div class="body">
+      <div class="title">${esc(fmtShort(x.date))} <b>${esc(x.name)}</b></div>
+      <div class="meta">${x.memo ? esc(x.memo) + ' · ' : ''}기록 ${esc(x.by)} · ${esc(agoText(x.createdAt))}</div></div></div>`).join('') : '<div class="card empty">기록이 없습니다.</div>'}</div>`;
+}
+function openEarlyForm(id, preset) {
+  const ex = id ? E.items.find((x) => x.id === id) : null;
+  const [pEmail, pYm] = (preset || '').split('|');
+  const today = todayStr();
+  const d0 = ex ? ex.date : pYm ? (today.slice(0, 7) === pYm ? today : pYm + '-01') : today;
+  const people = earlyPeople();
+  const m = openModal(`<header><h3>${ex ? '조기퇴근권 기록 수정' : '조기퇴근권 사용 기록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="field"><label>직원 <span class="req">*</span></label><select name="eemail"><option value="">— 직원 선택 —</option>${people.map((u) => `<option value="${esc(u.email)}" ${(ex ? ex.email : pEmail) === u.email ? 'selected' : ''}>${esc(u.name)} (${esc(drawPart(u) || '파트 없음')})</option>`).join('')}</select></div>
+      <div class="field"><label>사용한 날 <span class="req">*</span></label><input type="date" name="edate" value="${d0}"></div>
+      <div class="field"><label>메모 <span class="muted" style="font-weight:400">선택</span></label><input name="ememo" maxlength="100" placeholder="예: 17시 퇴근" value="${ex ? esc(ex.memo) : ''}"></div>
+      <div data-ewarn></div>
+      <p class="muted small" style="margin:6px 0 0">한 사람이 한 달에 한 번만 쓸 수 있어요. 이 기록은 PM만 봐요.</p>
+    </div>
+    <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '기록'}</button></footer>`);
+  const v = (n) => m.querySelector(`[name=${n}]`).value;
+  const check = () => {
+    const email = v('eemail'), date = v('edate');
+    const dup = email && date && E.items.find((x) => x.email === email && x.date.slice(0, 7) === date.slice(0, 7) && (!ex || x.id !== ex.id));
+    m.querySelector('[data-ewarn]').innerHTML = dup ? `<div class="warnbox">${esc(nameOf(email))}님은 ${Number(date.slice(5, 7))}월에 이미 썼어요 (${esc(fmtShort(dup.date))}).</div>` : '';
+    m.querySelector('[data-save]').disabled = !!dup;
+  };
+  m.querySelector('[name=eemail]').onchange = check;
+  m.querySelector('[name=edate]').oninput = check;
+  check();
+  m.querySelector('[data-save]').onclick = () => runEarly(api('saveEarly', { id: ex ? ex.id : '', email: v('eemail'), date: v('edate'), memo: v('ememo') }), ex ? '수정했습니다.' : '기록했습니다.');
+  if (ex) m.querySelector('[data-del]').onclick = async () => {
+    if (await confirmBox('기록 삭제', `<p>${esc(ex.name)} · ${esc(fmtShort(ex.date))} 조기퇴근권 기록을 삭제할까요?</p>`, '삭제', true)) runEarly(api('deleteEarly', ex.id), '삭제했습니다.');
+    else openEarlyForm(id);
+  };
+}
+
 /* ---------- 변경 이력 (PM) ---------- */
-const KIND_LABELS = { leave: '휴가', task: '업무', event: '중요 일정', request: '요청함', user: '팀원', holiday: '공휴일', meal: '식권', login: '로그인' };
+const KIND_LABELS = { leave: '휴가', task: '업무', event: '중요 일정', request: '요청함', early: '조기퇴근권', user: '팀원', holiday: '공휴일', meal: '식권', login: '로그인' };
 const HX = { loaded: false, loading: false, error: '', items: [], kind: '', who: '', noLogin: PREFS.noLogin !== false, limit: 200 };
 
 function loadHistory() {
@@ -3652,6 +3776,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-09', items: [
+    { x: "PM 메뉴에 '조기퇴근권'이 생겼어요. 1시간 조기퇴근권 사용을 직원 × 월 표로 기록 · 확인하고, 한 사람이 같은 달에 두 번 기록되면 막아요. 직원에게는 보이지 않아요.", r: 'pm' },
     { x: '업무 · 중요 일정의 담당자를 사다리 추첨으로 뽑을 수 있어요 (PM). 전체 · 파트 · DS직원 · 직접 고르기로 후보를 정하고, 인원 수나 파트별 인원을 정해요. 그날 휴가인 사람은 빠지고, 최근 당첨자 빼기도 고를 수 있어요.', r: 'pm' },
     { x: '사다리 추첨 결과는 후보 전원이 볼 수 있어요. 소식이나 일정의 [추첨 결과]를 누르면 사다리를 다시 볼 수 있어요.' },
   ] },
@@ -4478,6 +4603,7 @@ async function boot() {
   if (MOVED) return render(); // 예전 주소: 서버를 부르지 않고 안내만
   W.loaded = false; W.tasks = []; W.error = '';
   R.loaded = false; R.list = []; R.error = '';
+  E.loaded = false; E.items = [];
   screen = 'loading'; render();
   const fromUrl = await readUrlToken();
   if (fromUrl) { urlToken = true; if (!getToken()) setToken(fromUrl); }
@@ -4567,6 +4693,10 @@ document.addEventListener('click', (e) => {
     case 'a2hs': addToHome(); break;
     case 'toCal': openToCal(v); break;
     case 'drawView': openDrawView(v); break;
+    case 'earlyNew': openEarlyForm('', v); break;
+    case 'earlyEdit': openEarlyForm(v); break;
+    case 'earlyYear': E.year += Number(v); render(); break;
+    case 'earlyReload': E.error = ''; render(); break;
     case 'memoMore': { const m = t.previousElementSibling; const shut = m.classList.toggle('memo-clamp'); t.textContent = shut ? '더 보기' : '접기'; break; }
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
     case 'tab': goTab(v); break;
@@ -4630,7 +4760,7 @@ document.addEventListener('click', (e) => {
     case 'refresh': refreshData(true); break;
     case 'meal': approveMeal(); break;
     case 'copyAttendance': openAttendance(v); break;
-    case 'logout': setToken(''); syncUrlToken(''); S = null; W.loaded = false; W.tasks = []; R.loaded = false; R.list = []; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
+    case 'logout': setToken(''); syncUrlToken(''); S = null; W.loaded = false; W.tasks = []; R.loaded = false; R.list = []; E.loaded = false; E.items = []; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
     case 'reload': boot(); break;
     case 'reset': Mock._reset(); setToken(Mock._tokenFor('lead@example.com')); boot(); break;
   }
@@ -4685,7 +4815,8 @@ function goTab(v) {
   if (v === 'all-warn') { ui.tab = 'all'; ui.allFilter = { member: '', month: '', warnOnly: true }; }
   else ui.tab = v;
   if (v === 'history') { HX.loaded = false; HX.error = ''; HX.limit = 200; } // 탭을 열 때마다 최신 이력
-  if (v === 'requests' && R.loaded) loadRequests(true); // 남은 시간대 · 응답 현황은 열 때마다 최신으로
+  if (v === 'requests' && R.loaded) loadRequests(true);
+  if (v === 'early') E.loaded = false; // 열 때마다 최신 기록 // 남은 시간대 · 응답 현황은 열 때마다 최신으로
   try { localStorage.setItem(TAB_KEY, ui.tab); } catch (e) {}
   render(); window.scrollTo(0, 0);
 }
@@ -4906,6 +5037,10 @@ async function refreshData(manual) {
     if (W.loaded && seq === stateSeq) {
       const t = await api('getTasks');
       if (seq === stateSeq && JSON.stringify(t.tasks) !== JSON.stringify(W.tasks)) { W.tasks = t.tasks || []; changed = true; }
+    }
+    if (E.loaded && seq === stateSeq && isAdmin()) {
+      const x = await api('getEarly');
+      if (seq === stateSeq && JSON.stringify(x.items) !== JSON.stringify(E.items)) { E.items = x.items || []; changed = true; }
     }
     if (R.loaded && seq === stateSeq) {
       const q = await api('getRequests');
