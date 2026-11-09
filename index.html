@@ -315,16 +315,24 @@
   .guide ul { margin: 0; padding-left: 18px; }
   .guide li { margin: 3px 0; line-height: 1.5; }
   .early-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .early-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-  .early-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  .early-table th, .early-table td { border-bottom: 1px solid var(--border); padding: 4px 2px; text-align: center; white-space: nowrap; }
-  .early-table th { font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px 2px; }
-  .early-table .nm { text-align: left; padding-left: 10px; position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 96px; }
-  .early-table .now { background: var(--primary-weak); }
-  .early-table .sum { font-weight: 700; padding-right: 10px; }
-  .early-cell { width: 40px; height: 28px; border: 0; border-radius: 6px; background: none; color: transparent; font-size: 12px; cursor: pointer; }
-  .early-cell:hover { color: var(--muted); background: var(--bg); }
-  .early-cell.on { background: #0d9488; color: #fff; font-weight: 700; }
+  .early-list { padding: 0; }
+  .er { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  .er:last-child { border-bottom: 0; }
+  .er-name { width: 120px; font-weight: 600; }
+  .er-uses { flex: 1 0 auto; min-width: 120px; display: flex; align-items: center; gap: 4px; }
+  .er-year { display: flex; align-items: center; gap: 3px; }
+  .er-n { font-size: 12px; color: var(--muted); width: 30px; text-align: right; margin-left: 4px; }
+  .early-chip { border: 0; border-radius: 6px; background: #0d9488; color: #fff; font-weight: 700; font-size: 12px; padding: 4px 8px; cursor: pointer; }
+  .early-chip.sp { background: #c026d3; }
+  .early-add { border: 1px dashed var(--border); background: none; color: var(--muted); border-radius: 6px; font-size: 12px; padding: 3px 8px; cursor: pointer; }
+  .early-add.sm { padding: 3px 7px; }
+  .early-add:hover { color: var(--primary); border-color: var(--primary); }
+  .edot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); padding: 0; cursor: pointer; display: inline-block; }
+  .edot.on { background: #0d9488; border-color: #0d9488; }
+  .edot.on.sp { background: #c026d3; border-color: #c026d3; }
+  .edot.cur { outline: 2px solid var(--primary); outline-offset: 1px; }
+  @media (max-width: 520px) { .er-name { width: auto; flex: 1; } .er-year { order: 2; } .er-uses { order: 3; flex: 1 0 100%; min-width: 0; } } /* 휴대폰: 1줄 이름 · 점, 2줄 사용일 */
+  .sp-badge { background: #c026d3; color: #fff; }
   .draw-people { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px 8px; }
   .draw-people .dp-part { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 6px; }
   .quota-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
@@ -1142,9 +1150,10 @@ const Mock = (() => {
       const ex = i.id ? db.early.find((x) => x.id === i.id) : null;
       need(db.users.some((x) => x.email === i.email), '직원을 고르세요.');
       need(/^\d{4}-\d{2}-\d{2}$/.test(i.date || ''), '날짜를 고르세요.');
-      const dup = db.early.find((x) => x.email === i.email && x.date.slice(0, 7) === i.date.slice(0, 7) && x !== ex);
-      need(!dup, dup && `${nameOf(i.email)}님은 ${Number(i.date.slice(5, 7))}월에 이미 썼어요 (${fmtShort(dup.date)}). 한 달에 한 번만 쓸 수 있어요.`);
-      const row = { id: ex ? ex.id : 'X' + Date.now(), email: i.email, date: i.date, memo: (i.memo || '').trim(), createdAt: ex ? ex.createdAt : new Date().toISOString(), createdBy: ex ? ex.createdBy : u.email };
+      need(!i.special || (i.memo || '').trim(), '특별 사용은 사유를 적어 주세요.');
+      const dup = !i.special && db.early.find((x) => x.email === i.email && !x.special && x.date.slice(0, 7) === i.date.slice(0, 7) && x !== ex);
+      need(!dup, dup && `${nameOf(i.email)}님은 ${Number(i.date.slice(5, 7))}월에 이미 썼어요 (${fmtShort(dup.date)}). 한 달에 한 번만 쓸 수 있어요. (추가로 쓰게 하려면 '특별 사용'으로 기록하세요)`);
+      const row = { id: ex ? ex.id : 'X' + Date.now(), email: i.email, date: i.date, memo: (i.memo || '').trim(), special: !!i.special, createdAt: ex ? ex.createdAt : new Date().toISOString(), createdBy: ex ? ex.createdBy : u.email };
       db.early = db.early.filter((x) => x !== ex).concat([row]);
       log(u, 'early', ex ? '수정' : '등록', i.email, `조기퇴근권 ${fmtShort(i.date)}`);
       persist(); return this._early(u);
@@ -3360,7 +3369,7 @@ function bindSlotEditor(el, qq, repaint) {
 }
 
 /* ---------- 1시간 조기퇴근권 (PM만 기록 · 조회, 한 사람 한 달에 1번) ---------- */
-const E = { loaded: false, loading: false, error: '', items: [], year: new Date().getFullYear() };
+const E = { loaded: false, loading: false, error: '', items: [], ym: todayStr().slice(0, 7) }; // ym: 보고 있는 달
 function loadEarly() {
   if (E.loading) return;
   E.loading = true;
@@ -3385,42 +3394,42 @@ function viewEarly() {
     return E.error ? `<div class="card empty">기록을 불러오지 못했습니다. ${esc(E.error)}<br><button class="btn sm" data-act="earlyReload" style="margin-top:8px">다시 시도</button></div>`
       : '<div class="card empty">조기퇴근권 기록을 불러오는 중…</div>';
   }
-  const y = E.year, today = todayStr(), thisYm = today.slice(0, 7);
+  // 한 달씩 보기 (세로 목록) + 오른쪽에 올해 12개월을 작은 점으로
+  const ym = E.ym, y = ym.slice(0, 4), thisYm = todayStr().slice(0, 7);
   const people = earlyPeople();
-  const used = {};
-  E.items.forEach((x) => (used[x.email + '|' + x.date.slice(0, 7)] = x));
+  const used = {}; // '이메일|연-월' → 그 달 기록들 (일반 1번 + 특별 사용)
+  E.items.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach((x) => { const k = x.email + '|' + x.date.slice(0, 7); used[k] = (used[k] || []).concat([x]); });
   const months = Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
-  const thisMonthUsed = people.filter((u) => used[u.email + '|' + thisYm]).length;
-  const yearItems = E.items.filter((x) => x.date.slice(0, 4) === String(y));
-  setTimeout(() => { // 좁은 화면: 이번 달 칸이 보이게 표를 옆으로 밀어 둠
-    const w = document.querySelector('.early-wrap'), th = w && w.querySelector('th.now');
-    if (th) w.scrollLeft = Math.max(0, th.offsetLeft + th.offsetWidth + 50 - w.clientWidth);
-  });
+  const usedN = people.filter((u) => used[u.email + '|' + ym]).length;
+  const yearItems = E.items.filter((x) => x.date.slice(0, 4) === y);
+  const label = (m) => `${Number(m.slice(0, 4))}년 ${Number(m.slice(5))}월`;
   return `
     <div class="section-title" style="margin-top:4px"><span>1시간 조기퇴근권 <span class="muted small">한 사람 한 달에 1번 · PM만 보여요</span></span>
-      <button class="btn primary" data-act="earlyNew">+ 사용 기록</button></div>
-    <div class="infobox" style="margin:0 0 10px">이번 달(${Number(thisYm.slice(5))}월) 사용 <b>${thisMonthUsed}명</b> · 아직 안 쓴 사람 ${people.length - thisMonthUsed}명 <span class="muted small">(테스터 제외)</span></div>
-    <div class="early-nav"><button class="btn sm" data-act="earlyYear" data-v="-1" aria-label="이전 해">‹</button><b>${y}년</b><button class="btn sm" data-act="earlyYear" data-v="1" aria-label="다음 해">›</button>
-      <span class="muted small" style="margin-left:auto">칸을 누르면 기록 · 수정</span></div>
-    <div class="early-wrap"><table class="early-table">
-      <thead><tr><th class="nm">직원</th>${months.map((m) => `<th class="${m === thisYm ? 'now' : ''}">${Number(m.slice(5))}월</th>`).join('')}<th>합계</th></tr></thead>
-      <tbody>${people.map((u) => {
-        const n = months.filter((m) => used[u.email + '|' + m]).length;
-        return `<tr><td class="nm">${esc(u.name)}<span class="muted small"> ${esc(drawPart(u))}</span></td>${months.map((m) => {
-          const x = used[u.email + '|' + m];
-          return `<td class="${m === thisYm ? 'now' : ''}">${x
-            ? `<button class="early-cell on" data-act="earlyEdit" data-v="${x.id}" title="${esc(fmtShort(x.date))}${x.memo ? ' · ' + esc(x.memo) : ''}">${Number(x.date.slice(8))}일</button>`
-            : `<button class="early-cell" data-act="earlyNew" data-v="${esc(u.email)}|${m}" aria-label="${esc(u.name)} ${Number(m.slice(5))}월 기록">+</button>`}</td>`;
-        }).join('')}<td class="sum">${n || ''}</td></tr>`;
-      }).join('')}</tbody></table></div>
-    <div class="section-title">${y}년 사용 기록 <span class="muted small">${yearItems.length}건</span></div>
-    <div class="list">${yearItems.length ? yearItems.map((x) => `<div class="card item" style="cursor:pointer" data-act="earlyEdit" data-v="${x.id}"><div class="body">
-      <div class="title">${esc(fmtShort(x.date))} <b>${esc(x.name)}</b></div>
-      <div class="meta">${x.memo ? esc(x.memo) + ' · ' : ''}기록 ${esc(x.by)} · ${esc(agoText(x.createdAt))}</div></div></div>`).join('') : '<div class="card empty">기록이 없습니다.</div>'}</div>`;
+      <button class="btn primary" data-act="earlyNew" data-v="|${ym}">+ 사용 기록</button></div>
+    <div class="early-nav"><button class="btn sm" data-act="earlyMonth" data-v="-1" aria-label="이전 달">‹</button><b>${label(ym)}</b><button class="btn sm" data-act="earlyMonth" data-v="1" aria-label="다음 달">›</button>
+      ${ym !== thisYm ? '<button class="btn sm ghost" data-act="earlyMonth" data-v="now">이번 달</button>' : ''}
+      <span class="small" style="margin-left:auto">사용 <b>${usedN}명</b> · 안 씀 ${people.length - usedN}명</span></div>
+    <div class="card early-list">${people.map((u) => {
+      const xs = used[u.email + '|' + ym] || [];
+      const n = months.reduce((a, m) => a + (used[u.email + '|' + m] || []).length, 0);
+      return `<div class="er">
+        <div class="er-name">${esc(u.name)} <span class="muted small">${esc(drawPart(u))}</span></div>
+        <div class="er-uses">${xs.length ? xs.map((x) => `<button class="early-chip ${x.special ? 'sp' : ''}" data-act="earlyEdit" data-v="${x.id}" title="${x.special ? '특별 사용' : '사용'}${x.memo ? ' · ' + esc(x.memo) : ''}">${Number(x.date.slice(8))}일${x.special ? '★' : ''}</button>`).join('')
+          + `<button class="early-add sm" data-act="earlyNew" data-v="${esc(u.email)}|${ym}|sp" title="특별 사용 추가" aria-label="${esc(u.name)} 특별 사용 추가">+</button>`
+          : `<span class="muted">—</span><button class="early-add" data-act="earlyNew" data-v="${esc(u.email)}|${ym}">+ 기록</button>`}</div>
+        <div class="er-year">${months.map((m) => { const ms = used[u.email + '|' + m] || []; return `<button class="edot ${ms.length ? 'on' : ''} ${ms.some((x) => x.special) ? 'sp' : ''} ${m === ym ? 'cur' : ''}" data-act="earlyMonth" data-v="${m}" title="${Number(m.slice(5))}월${ms.length ? ' · ' + ms.map((x) => Number(x.date.slice(8)) + '일' + (x.special ? '★' : '')).join(', ') : ''}" aria-label="${Number(m.slice(5))}월 보기"></button>`; }).join('')}<span class="er-n">${n}회</span></div>
+      </div>`;
+    }).join('')}</div>
+    <div class="muted small" style="margin:6px 2px 0">점은 ${y}년 1~12월이에요. <span class="edot on" style="vertical-align:middle"></span> 사용 · <span class="edot on sp" style="vertical-align:middle"></span> 특별 사용 포함 · 점을 누르면 그 달로 가요.</div>
+    <details class="guide-old"><summary>${y}년 전체 기록 ${yearItems.length}건 보기</summary>
+      <div class="list" style="margin-top:8px">${yearItems.length ? yearItems.map((x) => `<div class="card item" style="cursor:pointer" data-act="earlyEdit" data-v="${x.id}"><div class="body">
+        <div class="title">${esc(fmtShort(x.date))} <b>${esc(x.name)}</b>${x.special ? ' <span class="badge sp-badge">★ 특별</span>' : ''}</div>
+        <div class="meta">${x.memo ? esc(x.memo) + ' · ' : ''}기록 ${esc(x.by)} · ${esc(agoText(x.createdAt))}</div></div></div>`).join('') : '<div class="card empty">기록이 없습니다.</div>'}</div>
+    </details>`;
 }
 function openEarlyForm(id, preset) {
   const ex = id ? E.items.find((x) => x.id === id) : null;
-  const [pEmail, pYm] = (preset || '').split('|');
+  const [pEmail, pYm, pSp] = (preset || '').split('|');
   const today = todayStr();
   const d0 = ex ? ex.date : pYm ? (today.slice(0, 7) === pYm ? today : pYm + '-01') : today;
   const people = earlyPeople();
@@ -3428,22 +3437,30 @@ function openEarlyForm(id, preset) {
     <div class="content">
       <div class="field"><label>직원 <span class="req">*</span></label><select name="eemail"><option value="">— 직원 선택 —</option>${people.map((u) => `<option value="${esc(u.email)}" ${(ex ? ex.email : pEmail) === u.email ? 'selected' : ''}>${esc(u.name)} (${esc(drawPart(u) || '파트 없음')})</option>`).join('')}</select></div>
       <div class="field"><label>사용한 날 <span class="req">*</span></label><input type="date" name="edate" value="${d0}"></div>
-      <div class="field"><label>메모 <span class="muted" style="font-weight:400">선택</span></label><input name="ememo" maxlength="100" placeholder="예: 17시 퇴근" value="${ex ? esc(ex.memo) : ''}"></div>
       <div data-ewarn></div>
-      <p class="muted small" style="margin:6px 0 0">한 사람이 한 달에 한 번만 쓸 수 있어요. 이 기록은 PM만 봐요.</p>
+      <label class="toggle" style="color:var(--text);margin:0 0 10px"><input type="checkbox" name="especial" ${(ex ? ex.special : pSp === 'sp') ? 'checked' : ''}> <span><b>★ 특별 사용</b> <span class="muted small">— 같은 달에 한 번 더 (포상 등, 사유 필수)</span></span></label>
+      <div class="field"><label data-ememolabel>메모</label><input name="ememo" maxlength="100" placeholder="예: 17시 퇴근" value="${ex ? esc(ex.memo) : ''}"></div>
+      <p class="muted small" style="margin:6px 0 0">한 사람이 한 달에 한 번만 쓸 수 있어요. 더 쓰게 하려면 '특별 사용'으로 기록하세요. 이 기록은 PM만 봐요.</p>
     </div>
     <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '기록'}</button></footer>`);
   const v = (n) => m.querySelector(`[name=${n}]`).value;
   const check = () => {
-    const email = v('eemail'), date = v('edate');
-    const dup = email && date && E.items.find((x) => x.email === email && x.date.slice(0, 7) === date.slice(0, 7) && (!ex || x.id !== ex.id));
-    m.querySelector('[data-ewarn]').innerHTML = dup ? `<div class="warnbox">${esc(nameOf(email))}님은 ${Number(date.slice(5, 7))}월에 이미 썼어요 (${esc(fmtShort(dup.date))}).</div>` : '';
-    m.querySelector('[data-save]').disabled = !!dup;
+    const email = v('eemail'), date = v('edate'), sp = m.querySelector('[name=especial]').checked;
+    const dup = email && date && E.items.find((x) => x.email === email && !x.special && x.date.slice(0, 7) === date.slice(0, 7) && (!ex || x.id !== ex.id));
+    m.querySelector('[data-ewarn]').innerHTML = dup ? `<div class="${sp ? 'infobox' : 'warnbox'}" style="margin:0 0 8px">${esc(nameOf(email))}님은 ${Number(date.slice(5, 7))}월에 이미 썼어요 (${esc(fmtShort(dup.date))}).${sp ? ' 특별 사용으로 한 번 더 기록해요.' : " 한 번 더 쓰게 하려면 아래 '특별 사용'을 체크하세요."}</div>` : '';
+    m.querySelector('[data-ememolabel]').innerHTML = sp ? '사유 <span class="req">*</span>' : '메모 <span class="muted" style="font-weight:400">선택</span>';
+    m.querySelector('[name=ememo]').placeholder = sp ? '예: 우수 사원 포상, 야근 보상' : '예: 17시 퇴근';
+    m.querySelector('[data-save]').disabled = !!dup && !sp;
   };
   m.querySelector('[name=eemail]').onchange = check;
   m.querySelector('[name=edate]').oninput = check;
+  m.querySelector('[name=especial]').onchange = check;
   check();
-  m.querySelector('[data-save]').onclick = () => runEarly(api('saveEarly', { id: ex ? ex.id : '', email: v('eemail'), date: v('edate'), memo: v('ememo') }), ex ? '수정했습니다.' : '기록했습니다.');
+  m.querySelector('[data-save]').onclick = () => {
+    const sp = m.querySelector('[name=especial]').checked;
+    if (sp && !v('ememo').trim()) { toast('특별 사용은 사유를 적어 주세요.', true); m.querySelector('[name=ememo]').focus(); return; }
+    runEarly(api('saveEarly', { id: ex ? ex.id : '', email: v('eemail'), date: v('edate'), memo: v('ememo'), special: sp }), ex ? '수정했습니다.' : '기록했습니다.');
+  };
   if (ex) m.querySelector('[data-del]').onclick = async () => {
     if (await confirmBox('기록 삭제', `<p>${esc(ex.name)} · ${esc(fmtShort(ex.date))} 조기퇴근권 기록을 삭제할까요?</p>`, '삭제', true)) runEarly(api('deleteEarly', ex.id), '삭제했습니다.');
     else openEarlyForm(id);
@@ -3776,6 +3793,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-09', items: [
+    { x: "조기퇴근권에 '★ 특별 사용'이 생겼어요. 사유를 적으면 같은 달에도 한 번 더 기록할 수 있고, 표에 자홍색 ★로 표시돼요.", r: 'pm' },
     { x: "PM 메뉴에 '조기퇴근권'이 생겼어요. 1시간 조기퇴근권 사용을 직원 × 월 표로 기록 · 확인하고, 한 사람이 같은 달에 두 번 기록되면 막아요. 직원에게는 보이지 않아요.", r: 'pm' },
     { x: '업무 · 중요 일정의 담당자를 사다리 추첨으로 뽑을 수 있어요 (PM). 전체 · 파트 · DS직원 · 직접 고르기로 후보를 정하고, 인원 수나 파트별 인원을 정해요. 그날 휴가인 사람은 빠지고, 최근 당첨자 빼기도 고를 수 있어요.', r: 'pm' },
     { x: '사다리 추첨 결과는 후보 전원이 볼 수 있어요. 소식이나 일정의 [추첨 결과]를 누르면 사다리를 다시 볼 수 있어요.' },
@@ -4695,7 +4713,12 @@ document.addEventListener('click', (e) => {
     case 'drawView': openDrawView(v); break;
     case 'earlyNew': openEarlyForm('', v); break;
     case 'earlyEdit': openEarlyForm(v); break;
-    case 'earlyYear': E.year += Number(v); render(); break;
+    case 'earlyMonth': {
+      if (v === 'now') E.ym = todayStr().slice(0, 7);
+      else if (/^\d{4}-\d{2}$/.test(v)) E.ym = v;
+      else { const d = new Date(+E.ym.slice(0, 4), +E.ym.slice(5) - 1 + Number(v), 1); E.ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+      render(); break;
+    }
     case 'earlyReload': E.error = ''; render(); break;
     case 'memoMore': { const m = t.previousElementSibling; const shut = m.classList.toggle('memo-clamp'); t.textContent = shut ? '더 보기' : '접기'; break; }
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
