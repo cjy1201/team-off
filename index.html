@@ -1510,7 +1510,7 @@ const TAB_KEY = 'team-off-tab'; // 마지막에 보던 탭 (이 기기만)
 const PREF_KEY = 'team-off-prefs';
 const PREFS = (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (e) { return {}; } })();
 function savePrefs() {
-  const p = { mineOnly: ui.mineOnly, workMine: ui.workMine, warnOnly: !!ui.allFilter.warnOnly, noLogin: HX.noLogin };
+  const p = { mineOnly: ui.mineOnly, workMine: ui.workMine, warnOnly: !!ui.allFilter.warnOnly, noLogin: HX.noLogin, memberGroup: ui.memberGroup };
   try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch (e) {}
 }
 const ui = {
@@ -1525,6 +1525,7 @@ const ui = {
   workMine: !!PREFS.workMine, // 내 담당·내가 쓴 것만
   workHidePast: (() => { try { return localStorage.getItem('team-off-work-hide-past') === '1'; } catch (e) { return false; } })(), // 아래 목록에서 지난 업무 숨김 (이 기기에 기억)
   workView: 'cal', // 'cal' 캘린더 / 'timeline' 타임라인
+  memberGroup: PREFS.memberGroup === 'vendor' ? 'vendor' : 'part', // 팀원 관리 묶어 보기 (파트별 / 업체별, 이 기기에 기억)
   usageSort: { key: 'name', dir: 'asc' }, // 전체 일정 · 사용 현황 표 정렬
 };
 let D = {}; // 파생 데이터
@@ -3797,7 +3798,13 @@ function viewMembers() {
   const byName = (a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'pl' ? -1 : 1);
   const counted = (list) => list.filter((u) => !isTester(u)).length; // 인원수는 테스터 제외
   const testers = S.users.filter(isTester).length;
-  const groups = [['PM (관리자)', S.users.filter((u) => u.role === 'pm')]]
+  const byVendor = ui.memberGroup === 'vendor';
+  const partRank = (u) => (u.role === 'pm' ? -1 : PARTS.includes(u.part) ? PARTS.indexOf(u.part) : 99);
+  const vendors = [...new Set(S.users.map((u) => u.vendor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const groups = byVendor
+    ? vendors.map((v) => [v, S.users.filter((u) => u.vendor === v)]).concat([['업체 미입력', S.users.filter((u) => !u.vendor)]])
+      .map(([t, list]) => [t, list.slice().sort((a, b) => partRank(a) - partRank(b) || byName(a, b))]).filter(([, list]) => list.length)
+    : [['PM (관리자)', S.users.filter((u) => u.role === 'pm')]]
     .concat(PARTS.map((p) => [`${p} 파트`, S.users.filter((u) => u.role !== 'pm' && u.part === p).sort(byName)]))
     .concat([['파트 미지정', S.users.filter((u) => u.role !== 'pm' && !PARTS.includes(u.part))]])
     .filter(([, list]) => list.length);
@@ -3820,6 +3827,10 @@ function viewMembers() {
       <b>PM</b> 전체 일정·관리 메뉴 &nbsp;·&nbsp; <b>PL</b> 전체 직원 일정 조회 &nbsp;·&nbsp; <b>파트원</b> 같은 파트 일정 조회 &nbsp;(PL·파트원은 본인 일정만 수정)<br>
       <span class="muted small"><b>DS직원</b>을 체크한 사람에게 상단 식권(PAYCO) 승인 버튼이 보여요. 현재 DS직원 ${S.users.filter((u) => u.ds).length}명.</span></div>
     ${backupBox()}
+    <div class="seg" style="margin-top:12px"><span class="small muted" style="align-self:center">묶어 보기</span>
+      <button class="${byVendor ? '' : 'on'}" data-act="memberGroup" data-v="part">파트별</button>
+      <button class="${byVendor ? 'on' : ''}" data-act="memberGroup" data-v="vendor">업체별 ${vendors.length ? `<span class="muted small">${vendors.length}곳</span>` : ''}</button></div>
+    ${byVendor && !vendors.length ? '<div class="infobox" style="margin:10px 0 0">아직 업체명이 입력된 직원이 없어요. 직원 노트 → 기본 정보에서 업체명을 넣어 주세요.</div>' : ''}
     ${groups.map(([title, list]) => `<div class="section-title">${esc(title)} <span class="muted small">${counted(list)}명</span></div><div class="list">${list.map(row).join('')}</div>`).join('')}`;
 }
 
@@ -4083,7 +4094,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-11', items: [
-    { x: '팀원 관리 목록에 업체명이 보여요. (직원 노트 기본 정보에서 입력)', r: 'pm' },
+    { x: '팀원 관리 목록에 업체명이 보이고, [파트별 / 업체별]로 묶어 볼 수 있어요. (업체명은 직원 노트 기본 정보에서 입력)', r: 'pm' },
     { x: "직원 노트 기본 정보에 업체명 · 내년 재계약 여부(재계약 / 미정 / 종료)가 생겼어요. 목록에서 업체 · 재계약으로 걸러 보고, 재계약 현황을 숫자로 봐요. 재계약 여부는 해마다 따로 남아요.", r: 'pm' },
     { x: "PM 메뉴에 '직원 노트'가 생겼어요. 직원별 면담 · 칭찬 · 이슈 기록과 기본 정보(항목은 직접 정해요), 후속 조치(기한 하루 전부터 메뉴에 숫자)를 남겨요. PM만 보고, '본인에게 공개'로 체크한 기록만 직원이 내 일정에서 봐요.", r: 'pm' },
     { x: "PM이 공유한 면담 기록이 있으면 '내 일정' 아래에 '나에게 공유된 면담 기록'으로 보여요." },
@@ -5009,6 +5020,7 @@ document.addEventListener('click', (e) => {
     case 'toCal': openToCal(v); break;
     case 'drawView': openDrawView(v); break;
     case 'earlyNew': openEarlyForm('', v); break;
+    case 'memberGroup': ui.memberGroup = v === 'vendor' ? 'vendor' : 'part'; savePrefs(); render(); break;
     case 'notePerson': N.person = v; N.kindF = ''; if (ui.tab === 'notes') { render(); window.scrollTo(0, 0); } else goTab('notes'); break;
     case 'noteBack': N.person = ''; render(); window.scrollTo(0, 0); break;
     case 'noteNew': openNoteForm('', { email: v || N.person }); break;
