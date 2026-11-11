@@ -338,6 +338,7 @@
   .todo-edit input[type=checkbox] { width: auto; }
   .shared-badge { background: #0d9488; color: #fff; }
   .rn-yes { background: #0d9488; color: #fff; }
+  .vendor-badge { background: var(--surface); border: 1px solid var(--border); color: var(--text); font-weight: 600; }
   .rn-maybe { background: #d97706; color: #fff; }
   .rn-no { background: #64748b; color: #fff; }
   .note-tools { flex-wrap: wrap; }
@@ -848,7 +849,7 @@ const Mock = (() => {
     const brief = (l) => u.role === 'member' && !u.viewAll && !mine(l);
     return {
       me: { email: u.email, name: u.name, role: u.role, part: u.part, mustChange: u.mustChange, defaultSubs: defs(u), viewAll: !!u.viewAll, annual: u.annual || {}, ds: !!u.ds, navOrder: u.navOrder || [] },
-      users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {}, ds: !!x.ds }
+      users: db.users.map((x) => (pm ? { email: x.email, name: x.name, role: x.role, part: x.part, defaultSubs: defs(x), viewAll: !!x.viewAll, annual: x.annual || {}, ds: !!x.ds, vendor: (((db.profiles || {})[x.email] || {}).fields || {}).업체명 || '' }
         : u.role === 'member' && u.viewAll && !x.ds
           ? { email: x.email, name: x.name, part: x.part, usage: true, annual: Object.fromEntries(Object.entries(x.annual || {}).map(([y, k]) => [y, typeof k === 'object'
             ? (({ 내역, ...rest }) => ({ ...rest, ...Object.fromEntries(GRANT_KINDS.filter((g) => (내역 || []).some((x2) => x2.kind === g)).map((g) => [g, 내역.filter((x2) => x2.kind === g).reduce((s2, x2) => s2 + x2.days, 0)])) }))(k) : k])) }
@@ -3463,7 +3464,11 @@ function loadNotes() {
 }
 async function runNotes(promise, okMsg) {
   loading(true);
-  try { const r = await promise; N.d = r; N.loaded = true; S.noteDue = r.due; closeModal(); render(); if (okMsg) toast(okMsg); }
+  try {
+    const r = await promise; N.d = r; N.loaded = true; S.noteDue = r.due;
+    S.users.forEach((u) => { if ('vendor' in u) u.vendor = ((r.profiles[u.email] || {}).fields || {}).업체명 || ''; }); // 팀원 관리 목록의 업체명도 바로
+    closeModal(); render(); if (okMsg) toast(okMsg);
+  }
   catch (e) { handleError(e); render(); }
   finally { loading(false); }
 }
@@ -3798,7 +3803,7 @@ function viewMembers() {
     .filter(([, list]) => list.length);
   const row = (u) => `
       <div class="card item"><div class="body">
-        <div class="title">${esc(u.name)} <span class="badge ${u.role !== 'member' ? 'admin' : ''}">${esc(roleLabel(u, true))}</span>${u.email === S.me.email ? '<span class="muted small">(나)</span>' : ''}</div>
+        <div class="title">${esc(u.name)} <span class="badge ${u.role !== 'member' ? 'admin' : ''}">${esc(roleLabel(u, true))}</span>${u.vendor ? ` <span class="badge vendor-badge" title="업체명 (직원 노트에서 수정)">${esc(u.vendor)}</span>` : ''}${u.email === S.me.email ? '<span class="muted small">(나)</span>' : ''}</div>
         <div class="meta">${esc(u.email)}${u.defaultSubs && u.defaultSubs.length ? ` · 기본 대직자 ${u.defaultSubs.map((e) => esc(nameOf(e))).join(', ')}` : ''}</div></div>
         <div class="actions"><label class="toggle ds-toggle" title="DS직원 (상단 식권 승인 버튼 사용)"><input type="checkbox" data-act="dsToggle" data-v="${esc(u.email)}" ${u.ds ? 'checked' : ''}> DS직원</label>
         ${u.role === 'member' ? `<label class="toggle ds-toggle" title="전체 일정 조회 (파트원도 전체 일정 · 휴가 사용 현황을 볼 수 있음)"><input type="checkbox" data-act="viewAllToggle" data-v="${esc(u.email)}" ${u.viewAll ? 'checked' : ''}> 전체조회</label>` : ''}
@@ -4078,6 +4083,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-11', items: [
+    { x: '팀원 관리 목록에 업체명이 보여요. (직원 노트 기본 정보에서 입력)', r: 'pm' },
     { x: "직원 노트 기본 정보에 업체명 · 내년 재계약 여부(재계약 / 미정 / 종료)가 생겼어요. 목록에서 업체 · 재계약으로 걸러 보고, 재계약 현황을 숫자로 봐요. 재계약 여부는 해마다 따로 남아요.", r: 'pm' },
     { x: "PM 메뉴에 '직원 노트'가 생겼어요. 직원별 면담 · 칭찬 · 이슈 기록과 기본 정보(항목은 직접 정해요), 후속 조치(기한 하루 전부터 메뉴에 숫자)를 남겨요. PM만 보고, '본인에게 공개'로 체크한 기록만 직원이 내 일정에서 봐요.", r: 'pm' },
     { x: "PM이 공유한 면담 기록이 있으면 '내 일정' 아래에 '나에게 공유된 면담 기록'으로 보여요." },
