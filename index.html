@@ -338,6 +338,7 @@
   .todo-edit input[type=checkbox] { width: auto; }
   .shared-badge { background: #0d9488; color: #fff; }
   .rn-yes { background: #0d9488; color: #fff; }
+  .vendor-sum { display: block; font-size: 13px; font-weight: 500; margin-top: 2px; }
   .vendor-badge { background: var(--surface); border: 1px solid var(--border); color: var(--text); font-weight: 600; }
   .rn-maybe { background: #d97706; color: #fff; }
   .rn-no { background: #64748b; color: #fff; }
@@ -3820,7 +3821,8 @@ function viewMembers() {
           <button class="btn sm danger" data-act="delUser" data-v="${esc(u.email)}">삭제</button>` : ''}</div>
       </div>`;
   return `
-    <div class="section-title" style="margin-top:4px"><span>총원 ${counted(S.users)}명${testers ? ` <span class="muted small">(테스터 ${testers}명 제외)</span>` : ''}</span>
+    <div class="section-title" style="margin-top:4px"><span>총원 ${counted(S.users)}명${testers ? ` <span class="muted small">(테스터 ${testers}명 제외)</span>` : ''}${vendors.length
+      ? `<span class="vendor-sum">${vendors.map((v) => `${esc(v)} <b>${counted(S.users.filter((u) => u.vendor === v))}</b>`).join(' · ')}${counted(S.users.filter((u) => !u.vendor)) ? ` · <span class="muted">미입력 ${counted(S.users.filter((u) => !u.vendor))}</span>` : ''}</span>` : ''}</span>
       <span style="display:flex;gap:6px"><button class="btn" data-act="bulkUsers">일괄 등록</button>
       <button class="btn primary" data-act="newUser">+ 팀원 추가</button></span></div>
     <div class="infobox" style="margin:0 0 4px">팀원을 추가하면 <b>임시 비밀번호</b>가 발급됩니다. 사이트 주소·이메일·임시 비밀번호를 전달하면 첫 로그인 때 본인 비밀번호로 바꾸게 됩니다.<br>
@@ -4094,7 +4096,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-11', items: [
-    { x: '팀원 관리 목록에 업체명이 보이고, [파트별 / 업체별]로 묶어 볼 수 있어요. (업체명은 직원 노트 기본 정보에서 입력)', r: 'pm' },
+    { x: '팀원 관리 목록에 업체명이 보이고, [파트별 / 업체별]로 묶어 볼 수 있어요. 총원 아래에 업체별 인원도 나와요. (업체명은 직원 노트 기본 정보에서 입력)', r: 'pm' },
     { x: "직원 노트 기본 정보에 업체명 · 내년 재계약 여부(재계약 / 미정 / 종료)가 생겼어요. 목록에서 업체 · 재계약으로 걸러 보고, 재계약 현황을 숫자로 봐요. 재계약 여부는 해마다 따로 남아요.", r: 'pm' },
     { x: "PM 메뉴에 '직원 노트'가 생겼어요. 직원별 면담 · 칭찬 · 이슈 기록과 기본 정보(항목은 직접 정해요), 후속 조치(기한 하루 전부터 메뉴에 숫자)를 남겨요. PM만 보고, '본인에게 공개'로 체크한 기록만 직원이 내 일정에서 봐요.", r: 'pm' },
     { x: "PM이 공유한 면담 기록이 있으면 '내 일정' 아래에 '나에게 공유된 면담 기록'으로 보여요." },
