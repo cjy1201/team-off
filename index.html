@@ -337,6 +337,10 @@
   .todo-edit input[type=date] { width: 150px; }
   .todo-edit input[type=checkbox] { width: auto; }
   .shared-badge { background: #0d9488; color: #fff; }
+  .slot.shut { text-decoration: line-through; opacity: .5; }
+  .slot-mrow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .slot-mrow > span { flex: 1; }
+  .slot-mrow.shut b { text-decoration: line-through; color: var(--muted); }
   .rn-yes { background: #0d9488; color: #fff; }
   .vendor-sum { display: block; font-size: 13px; font-weight: 500; margin-top: 2px; }
   .vendor-badge { background: var(--surface); border: 1px solid var(--border); color: var(--text); font-weight: 600; }
@@ -1136,6 +1140,7 @@ const Mock = (() => {
         if (q.type === 'slot') {
           const s = q.slots.find((x) => x.id === v);
           need(s, '시간대를 다시 고르세요.');
+          need(!s.closed || v === (mine && mine.answers[q.id]), '이 시간대는 PM이 닫았어요. 다른 시간대를 골라 주세요.');
           const used = resps.filter((x) => x.email !== u.email && x.answers[q.id] === v).length;
           need(v === (mine && mine.answers[q.id]) || used < s.cap, '방금 마감된 시간대예요. 다른 시간대를 골라 주세요.');
         }
@@ -1155,6 +1160,20 @@ const Mock = (() => {
       } else row.taskId = '';
       if (!mine) db.responses.push(row);
       persist(); return this._reqState(u);
+    },
+    setRequestSlot(token, id, slotId, closed) {
+      const u = admin(token); const r = (db.requests || []).find((x) => x.id === id);
+      need(r, '요청을 찾을 수 없습니다.');
+      const sq = r.questions.find((q) => q.type === 'slot'); const s = sq && sq.slots.find((x) => x.id === slotId);
+      need(s, '시간대를 찾을 수 없습니다.');
+      if (closed) s.closed = true; else delete s.closed;
+      let cleared = 0;
+      if (closed) db.responses.filter((x) => x.requestId === id && x.answers[sq.id] === slotId).forEach((x) => {
+        delete x.answers[sq.id]; db.tasks = (db.tasks || []).filter((t) => t.id !== x.taskId); x.taskId = ''; cleared++;
+        push(u, [x.email], `${r.title}: 고른 시간(${fmtShort(s.date)} ${s.start})이 취소됐어요. 다른 시간대를 다시 골라 주세요.`, 'tab:requests');
+      });
+      log(u, 'request', closed ? '시간대 닫기' : '시간대 열기', '', `${r.title} · ${s.id}`);
+      persist(); return { ...this._reqState(u), cleared };
     },
     cancelResponse(token, id) {
       const u = auth(token);
@@ -3205,8 +3224,8 @@ function openRequest(id) {
       q.slots.forEach((s) => (byDate[s.date] = byDate[s.date] || []).push(s));
       input = `<div data-qs="${q.id}">${Object.keys(byDate).map((d) => `<div class="slot-day"><div class="small muted">${fmtShort(d)}</div><div class="slot-grid">${byDate[d].map((s) => {
         const used = (r.slotTaken[s.id] || 0) - (r.mine && r.mine.answers[q.id] === s.id ? 1 : 0);
-        const full = used >= s.cap;
-        return `<button type="button" class="slot${v === s.id ? ' on' : ''}" data-s="${esc(s.id)}" ${full || !can ? 'disabled' : ''}>${s.start}~${s.end}<span>${full ? '마감' : s.cap > 1 ? `남은 ${s.cap - used}` : ''}</span></button>`;
+        const full = used >= s.cap, shut = s.closed && v !== s.id;
+        return `<button type="button" class="slot${v === s.id ? ' on' : ''}${shut ? ' shut' : ''}" data-s="${esc(s.id)}" ${full || shut || !can ? 'disabled' : ''}>${s.start}~${s.end}<span>${shut ? '닫힘' : full ? '마감' : s.cap > 1 ? `남은 ${s.cap - used}` : ''}</span></button>`;
       }).join('')}</div></div>`).join('')}</div>`;
     }
     return `<div class="field" data-qw="${q.id}"><label>${esc(q.label)}${req}</label>${input}</div>`;
@@ -3220,7 +3239,8 @@ function openRequest(id) {
       ${r.desc ? `<div class="infobox" style="margin:0 0 12px;white-space:pre-wrap">${esc(r.desc)}</div>` : ''}
       ${r.canManage ? `<div class="infobox" style="margin:0 0 12px">응답 <b>${r.responseCount}</b>/${r.targetCount}명${r.pending.length ? ` · 미응답 ${r.pending.slice(0, 5).map((p) => esc(p.name)).join(', ')}${r.pending.length > 5 ? ` 외 ${r.pending.length - 5}명` : ''}` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" data-rstat>현황 · 내려받기</button>
-        ${r.open && r.pending.length ? '<button class="btn sm" data-rremind>미응답자에게 다시 알림</button>' : ''}</div></div>` : ''}
+        ${r.open && r.pending.length ? '<button class="btn sm" data-rremind>미응답자에게 다시 알림</button>' : ''}
+        ${r.questions.some((x) => x.type === 'slot') ? '<button class="btn sm" data-rslots>시간대 닫기 · 열기</button>' : ''}</div></div>` : ''}
       ${r.isTarget ? r.questions.map(field).join('') : `<div class="muted small">질문 ${r.questions.length}개: ${r.questions.map((q) => esc(q.label)).join(', ')}</div>`}
       ${r.isTarget && !r.open ? '<div class="infobox">마감된 요청이에요.</div>' : ''}
       ${r.mine ? `<div class="muted small" style="margin-top:6px">응답 저장 ${esc(new Date(r.mine.updatedAt).toLocaleString('ko-KR'))}${can ? ' · 마감 전까지 고칠 수 있어요' : ''}</div>` : ''}
@@ -3259,6 +3279,7 @@ function openRequest(id) {
   };
   if (r.canManage) {
     q('[data-rstat]').onclick = () => openRequestStatus(r.id);
+    if (q('[data-rslots]')) q('[data-rslots]').onclick = () => openSlotManage(id);
     if (q('[data-rremind]')) q('[data-rremind]').onclick = () => runReq(api('remindRequest', r.id), (res) => `미응답자 ${res.reminded}명에게 알림을 보냈습니다.`, () => openRequest(r.id));
     q('[data-redit]').onclick = () => openRequestForm(r.id);
     q('[data-rclose]').onclick = () => runReq(api('setRequestStatus', r.id, r.status === 'closed' ? 'open' : 'closed'), r.status === 'closed' ? '다시 열었습니다.' : '마감했습니다.');
@@ -3405,6 +3426,40 @@ function openRequestForm(id, tplKey) {
     runReq(api('saveRequest', { id: ex ? ex.id : '', title: f.title, desc: f.desc, deadline: f.deadline, targets: f.targets, shared: f.shared, ...(locked ? {} : { questions: qs }) }),
       ex ? '저장했습니다.' : '요청을 보냈습니다. 대상자에게 소식이 가요.');
   };
+}
+
+/** PM: 응답이 있어도 시간대를 하나씩 닫기 · 다시 열기 (갑자기 회의가 생긴 시간 등) */
+function openSlotManage(id) {
+  const r = R.list.find((x) => x.id === id);
+  if (!r) return;
+  const sq = r.questions.find((x) => x.type === 'slot');
+  const who = (sid) => r.responses.filter((x) => x.answers[sq.id] === sid).map((x) => x.name);
+  const byDate = {};
+  sq.slots.forEach((s) => (byDate[s.date] = byDate[s.date] || []).push(s));
+  const m = openModal(`<header><h3>시간대 닫기 · 열기</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="infobox" style="margin:0 0 10px">닫은 시간대는 더 이상 고를 수 없어요. 이미 고른 사람이 있으면 그 신청과 면담 일정이 지워지고, 다시 고르라는 소식이 가요.</div>
+      ${Object.keys(byDate).map((d) => `<div class="slot-day"><div class="small muted">${fmtShort(d)}</div>${byDate[d].map((s) => {
+        const names = who(s.id);
+        return `<div class="slot-mrow ${s.closed ? 'shut' : ''}"><b>${s.start}~${s.end}</b>
+          <span class="small ${names.length ? '' : 'muted'}">${s.closed ? '닫힘' : names.length ? esc(names.join(', ')) : `빈자리${s.cap > 1 ? ` ${s.cap}` : ''}`}</span>
+          <button class="btn sm ${s.closed ? '' : 'danger'}" data-sl="${esc(s.id)}" data-on="${s.closed ? '' : '1'}">${s.closed ? '다시 열기' : '닫기'}</button></div>`;
+      }).join('')}</div>`).join('')}
+    </div>
+    <footer><button class="btn" data-back>뒤로</button><span class="spacer"></span><button class="btn primary" data-close>완료</button></footer>`);
+  m.querySelector('[data-back]').onclick = () => openRequest(id);
+  m.querySelectorAll('[data-sl]').forEach((b) => (b.onclick = async () => {
+    const sid = b.dataset.sl, closing = !!b.dataset.on, names = who(sid);
+    const s = sq.slots.find((x) => x.id === sid);
+    if (closing && names.length && !(await confirmBox('시간대 닫기', `<p><b>${esc(fmtShort(s.date))} ${s.start}~${s.end}</b>은 <b>${esc(names.join(', '))}</b>님이 고른 시간이에요.<br>닫으면 이 신청과 면담 일정이 지워지고, 다시 고르라는 소식이 가요. 닫을까요?</p>`, '닫기', true))) return openSlotManage(id);
+    loading(true);
+    try {
+      const res = await api('setRequestSlot', id, sid, closing);
+      R.list = res.requests || []; R.loaded = true; S.reqPending = res.pending || 0; stateSeq++; W.loaded = false;
+      toast(closing ? `닫았습니다.${res.cleared ? ` 신청 ${res.cleared}건을 취소하고 소식을 보냈어요.` : ''}` : '다시 열었습니다.');
+      openSlotManage(id);
+    } catch (e) { handleError(e); } finally { loading(false); }
+  }));
 }
 
 /** 시간대 질문 편집: 기간 · 시각 · 간격 · 정원으로 한 번에 만들고, 하나씩 지울 수 있음 */
@@ -4095,6 +4150,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-12', items: [
+    { x: "요청함 면담 시간대를 응답이 있어도 하나씩 닫고 다시 열 수 있어요 (요청 열기 → [시간대 닫기 · 열기]). 이미 고른 사람이 있으면 신청과 면담 일정이 지워지고 다시 고르라는 소식이 가요.", r: 'pm' },
+  ] },
   { d: '2026-11-11', items: [
     { x: '팀원 관리 목록에 업체명이 보이고, [파트별 / 업체별]로 묶어 볼 수 있어요. 총원 아래에 업체별 인원도 나와요. (업체명은 직원 노트 기본 정보에서 입력)', r: 'pm' },
     { x: "직원 노트 기본 정보에 업체명 · 내년 재계약 여부(재계약 / 미정 / 종료)가 생겼어요. 목록에서 업체 · 재계약으로 걸러 보고, 재계약 현황을 숫자로 봐요. 재계약 여부는 해마다 따로 남아요.", r: 'pm' },
