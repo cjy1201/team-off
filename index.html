@@ -480,6 +480,8 @@
    공통 상수 / 유틸
    ========================================================= */
 const TYPES = ['연차', '오전반차', '오후반차', '반반차', '병가', '연수/교육', '기타'];
+/** 화면에서 고를 수 있는 유형 (병가는 2026-11-13부터 안 씀 — 예전 기록 표시용으로 TYPES에만 남김) */
+const PICK_TYPES = TYPES.filter((t) => t !== '병가');
 const HALF = { '오전반차': 0.5, '오후반차': 0.5, '반반차': 0.25 }; // 하루짜리 + 사용일수 (반반차는 오후에만, 0.25일)
 const SHORT = { // 달력 칸에 표시하는 짧은 이름
   '연차': '연차', '오전반차': '오전', '오후반차': '오후', '반반차': '반반', '병가': '병가', '연수/교육': '교육', '기타': '기타' };
@@ -740,7 +742,7 @@ const Mock = (() => {
         L('jung@example.com', '오후반차', 8, 8, 'choi@example.com'),
         L('lead@example.com', '연차', 14, 16, ['park@example.com', 'choi@example.com'], '여름휴가 대체'),
         L('jung@example.com', '연차', 15, 15, 'lead@example.com'),
-        L('park@example.com', '병가', -1, -1, 'lee@example.com'),
+        L('park@example.com', '기타', -1, -1, 'lee@example.com', '병원'),
         L('lee@example.com', '연수/교육', 22, 22, 'choi@example.com', '외부 교육'),
         L('choi@example.com', '연차', 27, 29, 'park@example.com'),
         L('han@example.com', '연차', 9, 9, 'jung@example.com', '이사'),
@@ -1954,7 +1956,7 @@ function viewCalendar() {
       <div class="cal-grid">${cells}</div>
     </div>
     <div class="legend">
-      ${TYPES.map((t) => `<span><i class="dot t-${t}"></i>${t}</span>`).join('')}
+      ${PICK_TYPES.map((t) => `<span><i class="dot t-${t}"></i>${t}</span>`).join('')}
       <span><span style="color:var(--evt)">★</span> 중요 일정</span>
       <span><span style="color:var(--danger)">⚠</span> 대직자와 일정 겹침</span>
       ${canSeeTeam() ? '<span>↺ 내가 대직하는 일정</span>' : ''}
@@ -2894,7 +2896,7 @@ function viewAll() {
     const sum = (pred) => ls.filter(pred).reduce((s, l) => s + workdays(l), 0);
     const an = annualOf(u.email, u.annual, year);
     return { u, an, name: u.name, annual: sum((l) => l.type === '연차'), half: sum((l) => HALF[l.type]), total: sum((l) => l.type === '연차' || HALF[l.type]),
-      sick: sum((l) => l.type === '병가'), edu: sum((l) => l.type === '연수/교육'), etc: sum((l) => l.type === '기타'), granted: an.granted, left: an.left };
+      edu: sum((l) => l.type === '연수/교육'), etc: sum((l) => l.type === '기타'), granted: an.granted, left: an.left };
   });
   const us = ui.usageSort;
   usage.sort((a, b) => {
@@ -2903,11 +2905,10 @@ function viewAll() {
     if (x === null || y === null) return x === y ? a.name.localeCompare(b.name) : x === null ? 1 : -1; // 입력 안 한 사람(-)은 항상 아래
     return (us.dir === 'asc' ? x - y : y - x) || a.name.localeCompare(b.name);
   });
-  const rows = usage.map(({ u, an, annual, half, total, sick, edu, etc }) => `<tr><td><span class="plink" data-act="pickMember" data-v="${esc(u.email)}" title="${esc(u.name)}님 일정 전체 보기">${esc(u.name)}</span>${isAdmin() && u.part ? ` <span class="muted small">${esc(u.part)}</span>` : ''}</td>
+  const rows = usage.map(({ u, an, annual, half, total, edu, etc }) => `<tr><td><span class="plink" data-act="pickMember" data-v="${esc(u.email)}" title="${esc(u.name)}님 일정 전체 보기">${esc(u.name)}</span>${isAdmin() && u.part ? ` <span class="muted small">${esc(u.part)}</span>` : ''}</td>
       <td class="num">${annual}</td>
       <td class="num">${half}</td>
       <td class="num"><b>${total}</b></td>
-      <td class="num">${sick}</td>
       <td class="num">${edu}</td>
       <td class="num">${etc}</td>${showAnnual
         ? `<td class="num">${an.granted === null ? '<span class="muted">-</span>' : `<span title="${esc(annualBreak(an) + (an.kinds.내역.length ? '\n' + an.kinds.내역.map(grantText).join('\n') : ''))}">${an.granted}</span>`}</td><td class="num">${an.left === null ? '<span class="muted">-</span>' : an.left < 0 ? `<b style="color:var(--danger)">${an.left}</b>` : `<b>${an.left}</b>`}</td>`
@@ -2932,8 +2933,8 @@ function viewAll() {
     ${usagePart === null ? '' : `<div class="section-title"><span>${year}년 ${usagePart ? esc(usagePart) + ' 파트 ' : extOnly ? '휴가 ' : '팀원별 '}사용 현황 <span class="muted small">(주말·공휴일 제외 일수, 예정 포함 · 이름을 누르면 그 사람 일정 전체)</span></span>
       ${isAdmin() ? '<button class="btn sm" data-act="annualForm">휴가 일수 입력</button>' : ''}</div>
     <div class="card table-wrap"><table>
-      <thead><tr>${th('name', '이름', false)}${th('annual', '연차')}${th('half', '반차·반반차')}${th('total', '연차 합계')}${th('sick', '병가')}${th('edu', '연수/교육')}${th('etc', '기타')}${showAnnual ? th('granted', '부여 합계') + th('left', '남은 휴가') : ''}</tr></thead>
-      <tbody>${rows || `<tr><td colspan="9" class="muted">${extOnly ? 'DS직원이 아닌 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
+      <thead><tr>${th('name', '이름', false)}${th('annual', '연차')}${th('half', '반차·반반차')}${th('total', '연차 합계')}${th('edu', '연수/교육')}${th('etc', '기타')}${showAnnual ? th('granted', '부여 합계') + th('left', '남은 휴가') : ''}</tr></thead>
+      <tbody>${rows || `<tr><td colspan="8" class="muted">${extOnly ? 'DS직원이 아닌 직원이 없습니다.' : '직원이 없습니다.'}</td></tr>`}</tbody></table></div>`}`;
 }
 
 /* ---------- 휴가 일수 입력 (PM) — 일반휴가는 표에서, 특별·대체휴가는 사람별 부여 내역 ---------- */
@@ -4111,7 +4112,7 @@ const GUIDE = [
     { x: '휴대폰에서 캘린더를 좌우로 밀면 이전 · 다음 달로 넘어가요.' },
   ] },
   { t: '휴가 등록', items: [
-    { x: '[+ 일정 등록]에서 유형(연차 · 오전/오후반차 · 반반차 · 병가 · 연수/교육 · 기타)과 날짜, 대직자(1~3명, 필수)를 정해요. 반반차는 오후에만 쓰고 0.25일로 계산돼요.' },
+    { x: '[+ 일정 등록]에서 유형(연차 · 오전/오후반차 · 반반차 · 연수/교육 · 기타)과 날짜, 대직자(1~3명, 필수)를 정해요. 반반차는 오후에만 쓰고 0.25일로 계산돼요.' },
     { x: '대직자가 같은 날 부재이면 ⚠ 경고가 떠요. 경고가 있어도 등록은 돼요.' },
     { x: '오른쪽 위 이름 메뉴에서 기본 대직자를 정해 두면 등록할 때 자동으로 채워져요.' },
     { x: '수정 · 삭제는 [내 일정] 탭에서 본인 일정만 할 수 있어요. 이미 지난 일정은 PM만 고칠 수 있으니 PM에게 요청하세요.' },
@@ -4157,6 +4158,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-13', items: [
+    { x: '일정 유형에서 병가를 뺐어요. 아플 때는 연차·반차나 기타로 등록해 주세요.' },
     { x: "업체명을 안 적은 DS직원은 업체명이 'DS'로 표시돼요. 팀원 관리 업체별 보기 · 직원 노트에서 함께 쓰여요.", r: 'pm' },
     { x: '휴대폰에서 팀원 관리 버튼이 많으면 왼쪽이 잘리던 문제를 고쳤어요.', r: 'pm' },
   ] },
@@ -4488,7 +4490,7 @@ function openLeaveForm(id, date, restore) {
       ${isAdmin() ? `<div class="field"><label>대상자</label><select name="email" ${ex ? 'disabled' : ''}>
         ${S.users.map((u) => `<option value="${esc(u.email)}" ${u.email === f.email ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></div>` : ''}
       <div class="field"><label>유형 <span class="req">*</span></label>
-        <div class="seg">${TYPES.map((t) => `<button type="button" data-type="${t}" class="${f.type === t ? 'on' : ''}"><i class="dot t-${t}"></i>${t}</button>`).join('')}</div></div>
+        <div class="seg">${PICK_TYPES.map((t) => `<button type="button" data-type="${t}" class="${f.type === t ? 'on' : ''}"><i class="dot t-${t}"></i>${t}</button>`).join('')}</div></div>
       <div class="row2">
         <div class="field"><label class="label-row"><span data-startlabel>시작일 <span class="req">*</span></span>
           <span class="quick-dates"><button type="button" class="btn sm ghost" data-qd="0">오늘</button><button type="button" class="btn sm ghost" data-qd="1">내일</button></span></label>
@@ -4681,13 +4683,13 @@ function parseBulk(text) {
  * 휴가 일괄 등록용 붙여넣기 해석 (PM). 그룹웨어 목록을 그대로 복사해도 읽히게:
  *  - 제목 줄이 있으면 칸 이름으로 찾는다 (휴가자/연수자·직원·이름 / 유형·종류 / 시작일 / 종료일 / 대직자 / 메모·사유 / 등록일)
  *  - 제목 줄이 없으면: 직원 이름이 있는 첫 칸 = 직원, 날짜 칸 순서대로 시작일·종료일(·등록일), 유형 단어가 있는 칸 = 유형, 그 뒤 다른 직원 이름 = 대직자
- *  - 유형: 휴가·연차 → 연차, 휴가(오전)·오전반차 → 오전반차, 휴가(오후) → 오후반차, 반반차, 병가, 연수·교육 → 연수/교육, 기타·경조·공가 → 기타
+ *  - 유형: 휴가·연차 → 연차, 휴가(오전)·오전반차 → 오전반차, 휴가(오후) → 오후반차, 반반차, 연수·교육 → 연수/교육, 기타·경조·공가·병가 → 기타
  *  - 날짜: 2026-03-02 · 2026.3.2 · 3/2 · 3.2 (연도 없으면 올해)
  */
 function leaveTypeOf(v) {
   const s = String(v || '').replace(/\s/g, '');
   if (!s) return '';
-  if (/병가/.test(s)) return '병가';
+  if (/병가/.test(s)) return '기타';
   if (/연수|교육/.test(s)) return '연수/교육';
   if (/반반차/.test(s)) return '반반차';
   if (/오전/.test(s)) return '오전반차';
@@ -4777,7 +4779,7 @@ function openLeaveBulkForm() {
     <div class="content">
       <div class="infobox" style="margin-top:0;color:var(--text)">그룹웨어나 엑셀의 휴가 목록을 <b>제목 줄까지 함께</b> 복사해서 붙여넣으세요.<br>
         <span class="muted small">필요한 칸: 휴가자(이름 또는 이메일) · 유형 · 시작일 · 종료일 · 대직자 · 등록일(선택). 다른 칸은 무시합니다.<br>
-        유형: 휴가·연차 → 연차, 휴가(오전)/(오후) → 오전/오후반차, 반반차, 병가, 연수·교육, 기타 · 지난 일정은 대직자를 비워도 됩니다.</span></div>
+        유형: 휴가·연차 → 연차, 휴가(오전)/(오후) → 오전/오후반차, 반반차, 연수·교육, 기타(병가 포함) · 지난 일정은 대직자를 비워도 됩니다.</span></div>
       <div class="field"><textarea name="bulk" rows="7" spellcheck="false" placeholder="휴가자&#9;유형&#9;시작일&#9;종료일&#9;등록일&#9;대직자&#10;임동빈&#9;휴가(오후)&#9;2026-10-02&#9;2026-10-02&#9;2026-10-02&#9;김선희"></textarea></div>
       <div data-bulkpreview></div>
     </div>
