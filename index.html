@@ -1263,24 +1263,30 @@ const Mock = (() => {
       need(f.length, '항목을 1개 이상 넣으세요.'); db.noteFields = f; persist(); return this._notes();
     },
     // 1시간 조기퇴근권 (서버 Code.gs getEarly · saveEarly · deleteEarly와 같은 규칙)
-    _early(u) { return { items: (db.early || []).map((x) => ({ ...x, name: nameOf(x.email), by: nameOf(x.createdBy) })).sort((a, b) => (a.date < b.date ? 1 : -1)) }; },
-    getEarly(token) { return this._early(admin(token)); },
+    _earlyAuth(token) { const u = auth(token); need(u.role === 'pm' || (u.role === 'pl' && u.part), 'PM · PL만 사용할 수 있는 기능입니다.'); return u; },
+    _earlyCan(u, email) { if (u.role === 'pm') return true; const x = db.users.find((y) => y.email === email); return !!x && x.role !== 'pm' && x.part === u.part; },
+    _early(u) { return { items: (db.early || []).filter((x) => this._earlyCan(u, x.email)).map((x) => ({ ...x, name: nameOf(x.email), by: nameOf(x.createdBy) })).sort((a, b) => (a.date < b.date ? 1 : -1)) }; },
+    getEarly(token) { return this._early(this._earlyAuth(token)); },
     saveEarly(token, i) {
-      const u = admin(token); db.early = db.early || [];
+      const u = this._earlyAuth(token); db.early = db.early || [];
       const ex = i.id ? db.early.find((x) => x.id === i.id) : null;
+      need(!i.id || (ex && this._earlyCan(u, ex.email)), '기록을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.');
       need(db.users.some((x) => x.email === i.email), '직원을 고르세요.');
+      need(this._earlyCan(u, i.email), '내 파트 직원만 기록할 수 있습니다.');
+      need(u.role === 'pm' || !(i.special || (ex && ex.special)), '특별 사용은 PM만 기록 · 수정할 수 있습니다.');
       need(/^\d{4}-\d{2}-\d{2}$/.test(i.date || ''), '날짜를 고르세요.');
       need(!i.special || (i.memo || '').trim(), '특별 사용은 사유를 적어 주세요.');
       const dup = !i.special && db.early.find((x) => x.email === i.email && !x.special && x.date.slice(0, 7) === i.date.slice(0, 7) && x !== ex);
-      need(!dup, dup && `${nameOf(i.email)}님은 ${Number(i.date.slice(5, 7))}월에 이미 썼어요 (${fmtShort(dup.date)}). 한 달에 한 번만 쓸 수 있어요. (추가로 쓰게 하려면 '특별 사용'으로 기록하세요)`);
+      need(!dup, dup && `${nameOf(i.email)}님은 ${Number(i.date.slice(5, 7))}월에 이미 썼어요 (${fmtShort(dup.date)}). 한 달에 한 번만 쓸 수 있어요. ${u.role === 'pm' ? "(추가로 쓰게 하려면 '특별 사용'으로 기록하세요)" : '(추가 사용은 PM에게 특별 사용을 요청하세요)'}`);
       const row = { id: ex ? ex.id : 'X' + Date.now(), email: i.email, date: i.date, memo: (i.memo || '').trim(), special: !!i.special, createdAt: ex ? ex.createdAt : new Date().toISOString(), createdBy: ex ? ex.createdBy : u.email };
       db.early = db.early.filter((x) => x !== ex).concat([row]);
       log(u, 'early', ex ? '수정' : '등록', i.email, `조기퇴근권 ${fmtShort(i.date)}`);
       persist(); return this._early(u);
     },
     deleteEarly(token, id) {
-      const u = admin(token); const ex = (db.early || []).find((x) => x.id === id);
-      need(ex, '이미 삭제된 기록입니다.');
+      const u = this._earlyAuth(token); const ex = (db.early || []).find((x) => x.id === id);
+      need(ex && this._earlyCan(u, ex.email), '이미 삭제된 기록입니다.');
+      need(u.role === 'pm' || !ex.special, '특별 사용 기록은 PM만 삭제할 수 있습니다.');
       db.early = db.early.filter((x) => x !== ex); log(u, 'early', '삭제', ex.email, `조기퇴근권 ${fmtShort(ex.date)}`);
       persist(); return this._early(u);
     },
@@ -1755,6 +1761,7 @@ function myTabs(defaultOrder) {
   if (isAdmin()) tabs.push(['all', '전체 일정'], ['members', '팀원 관리'], ['notes', '직원 노트'], ['early', '조기퇴근권'], ['holidays', '공휴일'], ['history', '변경 이력']);
   else if (canSeeAll()) tabs.push(['all', '전체 일정']);
   else if (S.me.part) tabs.push(['all', `${S.me.part} 파트 일정`]);
+  if (isPL() && S.me.part) tabs.push(['early', '조기퇴근권']); // PL: 자기 파트원 조기퇴근권 관리
   const order = defaultOrder ? [] : S.me.navOrder || [];
   const rank = (k) => (order.indexOf(k) >= 0 ? order.indexOf(k) : 100);
   return tabs.map((t, i) => [t, i]).sort((a, b) => rank(a[0][0]) - rank(b[0][0]) || a[1] - b[1]).map(([t]) => t);
@@ -3789,6 +3796,8 @@ const earlyPeople = () => S.users.filter((u) => !isTester(u)).slice().sort((a, b
   const pa = drawPart(a) || '힣', pb = drawPart(b) || '힣';
   return pa === pb ? a.name.localeCompare(b.name, 'ko') : pa.localeCompare(pb, 'ko');
 });
+/** 조기퇴근권 대상: PM은 전체, PL은 같은 파트 직원 (PL 본인 포함 — 서버 earlyCan_과 같게) */
+const earlyScope = () => (isAdmin() ? earlyPeople() : earlyPeople().filter((u) => u.part === S.me.part));
 function viewEarly() {
   if (!E.loaded) {
     if (!E.error) loadEarly();
@@ -3797,7 +3806,7 @@ function viewEarly() {
   }
   // 한 달씩 보기 (세로 목록) + 오른쪽에 올해 12개월을 작은 점으로
   const ym = E.ym, y = ym.slice(0, 4), thisYm = todayStr().slice(0, 7);
-  const people = earlyPeople();
+  const people = earlyScope();
   const used = {}; // '이메일|연-월' → 그 달 기록들 (일반 1번 + 특별 사용)
   E.items.slice().sort((a, b) => (a.date < b.date ? -1 : 1)).forEach((x) => { const k = x.email + '|' + x.date.slice(0, 7); used[k] = (used[k] || []).concat([x]); });
   const months = Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
@@ -3805,7 +3814,7 @@ function viewEarly() {
   const yearItems = E.items.filter((x) => x.date.slice(0, 4) === y);
   const label = (m) => `${Number(m.slice(0, 4))}년 ${Number(m.slice(5))}월`;
   return `
-    <div class="section-title" style="margin-top:4px"><span>1시간 조기퇴근권 <span class="muted small">한 사람 한 달에 1번 · PM만 보여요</span></span>
+    <div class="section-title" style="margin-top:4px"><span>1시간 조기퇴근권 <span class="muted small">한 사람 한 달에 1번 · ${isAdmin() ? 'PM과 파트 PL만 보여요' : esc(S.me.part) + ' 파트원 · PM과 PL만 보여요'}</span></span>
       <button class="btn primary" data-act="earlyNew" data-v="|${ym}">+ 사용 기록</button></div>
     <div class="early-nav"><button class="btn sm" data-act="earlyMonth" data-v="-1" aria-label="이전 달">‹</button><b>${label(ym)}</b><button class="btn sm" data-act="earlyMonth" data-v="1" aria-label="다음 달">›</button>
       ${ym !== thisYm ? '<button class="btn sm ghost" data-act="earlyMonth" data-v="now">이번 달</button>' : ''}
@@ -3816,7 +3825,7 @@ function viewEarly() {
       return `<div class="er">
         <div class="er-name">${esc(u.name)} <span class="muted small">${esc(drawPart(u))}</span></div>
         <div class="er-uses">${xs.length ? xs.map((x) => `<button class="early-chip ${x.special ? 'sp' : ''}" data-act="earlyEdit" data-v="${x.id}" title="${x.special ? '특별 사용' : '사용'}${x.memo ? ' · ' + esc(x.memo) : ''}">${Number(x.date.slice(8))}일${x.special ? '★' : ''}</button>`).join('')
-          + `<button class="early-add sm" data-act="earlyNew" data-v="${esc(u.email)}|${ym}|sp" title="특별 사용 추가" aria-label="${esc(u.name)} 특별 사용 추가">+</button>`
+          + (isAdmin() ? `<button class="early-add sm" data-act="earlyNew" data-v="${esc(u.email)}|${ym}|sp" title="특별 사용 추가" aria-label="${esc(u.name)} 특별 사용 추가">+</button>` : '')
           : `<span class="muted">—</span><button class="early-add" data-act="earlyNew" data-v="${esc(u.email)}|${ym}">+ 기록</button>`}</div>
         <div class="er-year">${months.map((m) => { const ms = used[u.email + '|' + m] || []; return `<button class="edot ${ms.length ? 'on' : ''} ${ms.some((x) => x.special) ? 'sp' : ''} ${m === ym ? 'cur' : ''}" data-act="earlyMonth" data-v="${m}" title="${Number(m.slice(5))}월${ms.length ? ' · ' + ms.map((x) => Number(x.date.slice(8)) + '일' + (x.special ? '★' : '')).join(', ') : ''}" aria-label="${Number(m.slice(5))}월 보기"></button>`; }).join('')}<span class="er-n">${n}회</span></div>
       </div>`;
@@ -3833,22 +3842,26 @@ function openEarlyForm(id, preset) {
   const [pEmail, pYm, pSp] = (preset || '').split('|');
   const today = todayStr();
   const d0 = ex ? ex.date : pYm ? (today.slice(0, 7) === pYm ? today : pYm + '-01') : today;
-  const people = earlyPeople();
-  const m = openModal(`<header><h3>${ex ? '조기퇴근권 기록 수정' : '조기퇴근권 사용 기록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
+  const people = earlyScope();
+  const spOk = isAdmin(); // 특별 사용은 PM만 (PL은 보기만)
+  const ro = !!(ex && ex.special && !spOk);
+  const m = openModal(`<header><h3>${ro ? '조기퇴근권 특별 사용' : ex ? '조기퇴근권 기록 수정' : '조기퇴근권 사용 기록'}</h3><button class="btn ghost sm" data-close>닫기</button></header>
     <div class="content">
       <div class="field"><label>직원 <span class="req">*</span></label><select name="eemail"><option value="">— 직원 선택 —</option>${people.map((u) => `<option value="${esc(u.email)}" ${(ex ? ex.email : pEmail) === u.email ? 'selected' : ''}>${esc(u.name)} (${esc(drawPart(u) || '파트 없음')})</option>`).join('')}</select></div>
       <div class="field"><label>사용한 날 <span class="req">*</span></label><input type="date" name="edate" value="${d0}"></div>
       <div data-ewarn></div>
-      <label class="toggle" style="color:var(--text);margin:0 0 10px"><input type="checkbox" name="especial" ${(ex ? ex.special : pSp === 'sp') ? 'checked' : ''}> <span><b>★ 특별 사용</b> <span class="muted small">— 같은 달에 한 번 더 (포상 등, 사유 필수)</span></span></label>
+      <label class="toggle" style="color:var(--text);margin:0 0 10px;${spOk || ro ? '' : 'display:none'}"><input type="checkbox" name="especial" ${(ex ? ex.special : spOk && pSp === 'sp') ? 'checked' : ''}> <span><b>★ 특별 사용</b> <span class="muted small">— 같은 달에 한 번 더 (포상 등, 사유 필수 · PM만)</span></span></label>
       <div class="field"><label data-ememolabel>메모</label><input name="ememo" maxlength="100" placeholder="예: 17시 퇴근" value="${ex ? esc(ex.memo) : ''}"></div>
-      <p class="muted small" style="margin:6px 0 0">한 사람이 한 달에 한 번만 쓸 수 있어요. 더 쓰게 하려면 '특별 사용'으로 기록하세요. 이 기록은 PM만 봐요.</p>
+      <p class="muted small" style="margin:6px 0 0">${ro ? '특별 사용 기록은 PM만 고치거나 지울 수 있어요.' : spOk ? "한 사람이 한 달에 한 번만 쓸 수 있어요. 더 쓰게 하려면 '특별 사용'으로 기록하세요. 이 기록은 PM과 파트 PL만 봐요."
+        : '한 사람이 한 달에 한 번만 쓸 수 있어요. 더 쓰게 하려면 PM에게 특별 사용을 요청하세요. 이 기록은 PM과 파트 PL만 봐요.'}</p>
     </div>
-    <footer>${ex ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span><button class="btn" data-close>취소</button><button class="btn primary" data-save>${ex ? '저장' : '기록'}</button></footer>`);
+    <footer>${ex && !ro ? '<button class="btn danger" data-del>삭제</button>' : ''}<span class="spacer"></span><button class="btn" data-close>${ro ? '닫기' : '취소'}</button>${ro ? '' : `<button class="btn primary" data-save>${ex ? '저장' : '기록'}</button>`}</footer>`);
+  if (ro) { m.querySelectorAll('.content input, .content select').forEach((el) => (el.disabled = true)); return; }
   const v = (n) => m.querySelector(`[name=${n}]`).value;
   const check = () => {
     const email = v('eemail'), date = v('edate'), sp = m.querySelector('[name=especial]').checked;
     const dup = email && date && E.items.find((x) => x.email === email && !x.special && x.date.slice(0, 7) === date.slice(0, 7) && (!ex || x.id !== ex.id));
-    m.querySelector('[data-ewarn]').innerHTML = dup ? `<div class="${sp ? 'infobox' : 'warnbox'}" style="margin:0 0 8px">${esc(nameOf(email))}님은 ${Number(date.slice(5, 7))}월에 이미 썼어요 (${esc(fmtShort(dup.date))}).${sp ? ' 특별 사용으로 한 번 더 기록해요.' : " 한 번 더 쓰게 하려면 아래 '특별 사용'을 체크하세요."}</div>` : '';
+    m.querySelector('[data-ewarn]').innerHTML = dup ? `<div class="${sp ? 'infobox' : 'warnbox'}" style="margin:0 0 8px">${esc(nameOf(email))}님은 ${Number(date.slice(5, 7))}월에 이미 썼어요 (${esc(fmtShort(dup.date))}).${sp ? ' 특별 사용으로 한 번 더 기록해요.' : spOk ? " 한 번 더 쓰게 하려면 아래 '특별 사용'을 체크하세요." : ' 한 번 더 쓰려면 PM에게 특별 사용을 요청하세요.'}</div>` : '';
     m.querySelector('[data-ememolabel]').innerHTML = sp ? '사유 <span class="req">*</span>' : '메모 <span class="muted" style="font-weight:400">선택</span>';
     m.querySelector('[name=ememo]').placeholder = sp ? '예: 우수 사원 포상, 야근 보상' : '예: 17시 퇴근';
     m.querySelector('[data-save]').disabled = !!dup && !sp;
@@ -4149,7 +4162,7 @@ function openNavOrder() {
 }
 
 /* ---------- 사용 안내 (이름 메뉴) ----------
- * 중요 기능을 배포할 때 UPDATES 맨 앞에 추가한다. r: 보여줄 대상 (없으면 전원 / team: 다른 사람 일정을 보는 사람 / all: 전체 조회 권한 / pm: PM)
+ * 중요 기능을 배포할 때 UPDATES 맨 앞에 추가한다. r: 보여줄 대상 (없으면 전원 / team: 다른 사람 일정을 보는 사람 / all: 전체 조회 권한 / pm: PM / pl: PL / lead: PM·PL)
  */
 const GUIDE = [
   { t: '캘린더', items: [
@@ -4205,6 +4218,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-18', items: [
+    { x: 'PL도 [조기퇴근권] 메뉴에서 자기 파트원(본인 포함)의 조기퇴근권을 기록 · 수정할 수 있어요. 한 달에 한 번 규칙은 PM 기록과 함께 적용되고, 특별 사용은 PM만 기록할 수 있어요.', r: 'lead' },
+  ] },
   { d: '2026-11-17', items: [
     { x: '요청함 면담에 시간대를 나중에 더 넣을 수 있어요. 응답이 있어도 돼요 (요청 열기 → [시간대 추가 · 닫기] → [+ 시간대 추가 · 마감 연장]). 마감일도 같이 늦출 수 있고, 아직 시간을 안 고른 사람에게 소식이 가요.', r: 'pm' },
   ] },
@@ -4336,7 +4352,7 @@ const UPDATES = [
 // r: 없으면 전원 / pm / all(전체 조회) / team(다른 사람 일정을 봄) / ds(DS직원) / annual(휴가 부여 일수가 입력된 사람) / viewer('전체 일정 조회' 권한 파트원) / usage(사용 현황 표를 보는 사람)
 const guideFor = (r) => !r || (r === 'pm' ? isAdmin() : r === 'all' ? canSeeAll() : r === 'team' ? canSeeTeam() : r === 'ds' ? !!S.me.ds
   : r === 'annual' ? annualOf(S.me.email, S.me.annual, todayStr().slice(0, 4)).granted !== null : r === 'viewer' ? !isAdmin() && !isPL() && !!S.me.viewAll
-  : r === 'usage' ? isAdmin() || isPL() || !!S.me.viewAll : false);
+  : r === 'usage' ? isAdmin() || isPL() || !!S.me.viewAll : r === 'pl' ? isPL() : r === 'lead' ? isAdmin() || isPL() : false);
 /* 안 본 업데이트가 있으면 종 아이콘에 작은 점 (이 기기 기준, 나에게 해당하는 항목이 있는 업데이트만) */
 const GUIDE_SEEN_KEY = 'team-off-guide-seen';
 const latestUpdate = () => (UPDATES.find((u) => u.items.some((i) => guideFor(i.r))) || { d: '' }).d;
