@@ -1143,6 +1143,7 @@ const Mock = (() => {
           const s = q.slots.find((x) => x.id === v);
           need(s, '시간대를 다시 고르세요.');
           need(!s.closed || v === (mine && mine.answers[q.id]), '이 시간대는 PM이 닫았어요. 다른 시간대를 골라 주세요.');
+          need(s.date >= todayStr() || v === (mine && mine.answers[q.id]), '지난 날짜예요. 다른 시간대를 골라 주세요.');
           const used = resps.filter((x) => x.email !== u.email && x.answers[q.id] === v).length;
           need(v === (mine && mine.answers[q.id]) || used < s.cap, '방금 마감된 시간대예요. 다른 시간대를 골라 주세요.');
         }
@@ -3253,8 +3254,8 @@ function openRequest(id) {
       q.slots.forEach((s) => (byDate[s.date] = byDate[s.date] || []).push(s));
       input = `<div data-qs="${q.id}">${Object.keys(byDate).map((d) => `<div class="slot-day"><div class="small muted">${fmtShort(d)}</div><div class="slot-grid">${byDate[d].map((s) => {
         const used = (r.slotTaken[s.id] || 0) - (r.mine && r.mine.answers[q.id] === s.id ? 1 : 0);
-        const full = used >= s.cap, shut = s.closed && v !== s.id;
-        return `<button type="button" class="slot${v === s.id ? ' on' : ''}${shut ? ' shut' : ''}" data-s="${esc(s.id)}" ${full || shut || !can ? 'disabled' : ''}>${s.start}~${s.end}<span>${shut ? '닫힘' : full ? '마감' : s.cap > 1 ? `남은 ${s.cap - used}` : ''}</span></button>`;
+        const full = used >= s.cap, shut = s.closed && v !== s.id, past = s.date < todayStr() && v !== s.id; // 지난 날짜는 비어 있어도 못 고름 (이미 고른 건 그대로)
+        return `<button type="button" class="slot${v === s.id ? ' on' : ''}${shut || past ? ' shut' : ''}" data-s="${esc(s.id)}" ${full || shut || past || !can ? 'disabled' : ''}>${s.start}~${s.end}<span>${past ? '지남' : shut ? '닫힘' : full ? '마감' : s.cap > 1 ? `남은 ${s.cap - used}` : ''}</span></button>`;
       }).join('')}</div></div>`).join('')}</div>`;
     }
     return `<div class="field" data-qw="${q.id}"><label>${esc(q.label)}${req}</label>${input}</div>`;
@@ -4218,6 +4219,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-19', items: [
+    { x: "요청함 면담 시간대에서 지난 날짜는 비어 있어도 고를 수 없어요 ('지남'으로 표시). 이미 고른 시간은 그대로예요." },
+  ] },
   { d: '2026-11-18', items: [
     { x: 'PL도 [조기퇴근권] 메뉴에서 자기 파트원(본인 포함)의 조기퇴근권을 기록 · 수정할 수 있어요. 한 달에 한 번 규칙은 PM 기록과 함께 적용되고, 특별 사용은 PM만 기록할 수 있어요.', r: 'lead' },
   ] },
