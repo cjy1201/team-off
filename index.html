@@ -3170,10 +3170,10 @@ function mealAgentHtml(a) {
   const seen = a.seen ? ` (마지막 확인 ${esc(agoText(a.seen))})` : '';
   const hours = mealHoursText(a.hours);
   if (a.state === 'ok') return `<p class="muted small">승인 PC 연결됨${seen} · ${hours} 확인해요.</p>`;
-  if (a.state === 'closed') return `<div class="infobox" style="margin:0 0 10px">지금은 승인 PC 운영 시간이 아니에요. 승인 PC는 <b>${hours}</b> 확인해요. 지금 요청해 두면 다음 운영 시간에 처리돼요.</div>`;
+  if (a.state === 'closed') return `<div class="infobox" style="margin:0 0 10px">지금은 승인 요청 시간이 아니에요. 승인 요청은 <b>평일 ${a.hours ? `${a.hours.start}~${a.hours.end}시` : '운영 시간'}</b>에만 할 수 있어요.</div>`;
   if (a.state === 'login') return `<div class="warnbox" style="margin:0 0 10px">승인 PC의 PAYCO 로그인이 풀렸어요${seen}. 승인권자가 다시 로그인하면 요청이 처리돼요.</div>`;
-  if (a.state === 'offline') return `<div class="warnbox" style="margin:0 0 10px">승인 PC가 꺼져 있는 것 같아요${seen}. 요청해 두면 다시 켜졌을 때 처리돼요 (3일 안).</div>`;
-  return '<div class="warnbox" style="margin:0 0 10px">승인 PC가 아직 연결되지 않았어요. 요청해 두면 연결된 뒤 처리돼요 (3일 안).</div>';
+  if (a.state === 'offline') return `<div class="warnbox" style="margin:0 0 10px">승인 PC가 꺼져 있는 것 같아요${seen}. 요청해 두면 오늘 운영 시간 안에 다시 켜졌을 때 처리돼요.</div>`;
+  return '<div class="warnbox" style="margin:0 0 10px">승인 PC가 아직 연결되지 않았어요. 요청해 두면 오늘 운영 시간 안에 연결됐을 때 처리돼요.</div>';
 }
 function mealJobHtml(j) {
   if (!j) return '';
@@ -3190,7 +3190,7 @@ function openMealAgent(r) {
     <div class="content">
       <div data-magent></div>
       <p>PAYCO에서 식권을 신청한 뒤 <b>[승인 요청]</b>을 누르세요. 승인 PC가 <b>${esc(S.me.name)}</b> 이름으로 들어온 대기 신청만 승인해요.</p>
-      <p class="muted small">다른 사람의 신청은 건드리지 않아요. 운영 시간(${esc(mealHoursText(r.agent && r.agent.hours))} 확인)에는 보통 ${r.agent && r.agent.hours ? r.agent.hours.everyMin : 5}분 안에 처리돼요.</p>
+      <p class="muted small">다른 사람의 신청은 건드리지 않아요. 승인 요청은 ${esc(r.agent && r.agent.hours ? `평일 ${r.agent.hours.start}~${r.agent.hours.end}시` : '운영 시간')}에만 할 수 있고, 보통 ${r.agent && r.agent.hours ? r.agent.hours.everyMin : 5}분 안에 처리돼요.</p>
       <div data-mjob></div>
     </div>
     <footer><span class="spacer"></span><button class="btn" data-close>닫기</button><button class="btn primary" data-mreq>승인 요청</button></footer>`);
@@ -3201,8 +3201,9 @@ function openMealAgent(r) {
     job = x.job || job;
     m.querySelector('[data-mjob]').innerHTML = mealJobHtml(job);
     const active = !!(job && MEAL_ACTIVE[job.status]);
-    btn.disabled = active;
-    btn.textContent = active ? '처리 기다리는 중…' : '승인 요청';
+    const closed = !!(x.agent && x.agent.state === 'closed'); // 운영 시간 밖에는 요청 못 함 (서버도 거절)
+    btn.disabled = active || closed;
+    btn.textContent = active ? '처리 기다리는 중…' : closed ? '요청 시간 아님' : '승인 요청';
     return active;
   };
   // 창이 열려 있는 동안 5초마다 결과 확인 (최대 7분 — 그 뒤에는 식권 버튼을 다시 눌러 확인)
@@ -4359,7 +4360,7 @@ const GUIDE = [
   ] },
   { r: 'ds', t: '식권 (상단 식권 아이콘, DS직원)', items: [
     { x: 'PAYCO에서 식권을 신청한 뒤 상단 식권 아이콘 → [승인 요청]을 누르면, 승인 PC가 내 이름으로 들어온 대기 신청을 승인해요. 승인 PC는 평일 17~22시에 5분마다 확인하고, 결과는 그 창에서 보여요.' },
-    { x: '운영 시간 밖에 요청하면 다음 운영 시간에 처리돼요. 승인 PC가 꺼져 있거나 PAYCO 로그인이 풀려 있으면 창에 안내가 보여요. 요청은 3일 동안 남아 있어요.' },
+    { x: '승인 요청은 평일 17~22시에만 할 수 있어요. 그날 운영 시간 안에 처리되지 못한 요청은 만료돼요. 승인 PC가 꺼져 있거나 PAYCO 로그인이 풀려 있으면 창에 안내가 보여요.' },
     { x: '다른 사람의 신청은 건드리지 않아요. 같은 이름이 다른 사번으로 있으면 자동 승인하지 않으니 승인권자에게 요청하세요.' },
   ] },
   { t: '편하게 쓰기', items: [
@@ -4371,7 +4372,7 @@ const GUIDE = [
 ];
 const UPDATES = [
   { d: '2026-11-21', items: [
-    { x: '식권 승인이 다시 돼요. 상단 식권 아이콘 → [승인 요청]을 누르면 승인 PC가 평일 17~22시에 5분마다 확인해서 내 대기 신청을 승인하고, 결과를 창에서 보여줘요.', r: 'ds' },
+    { x: '식권 승인이 다시 돼요. 평일 17~22시에 상단 식권 아이콘 → [승인 요청]을 누르면 승인 PC가 5분 안에 내 대기 신청을 승인하고, 결과를 창에서 보여줘요.', r: 'ds' },
   ] },
   { d: '2026-11-20', items: [
     { x: 'PAYCO 정책이 바뀌어 식권 자동 승인이 막혔어요. 식권 버튼을 누르면 안내가 뜨니, 승인권자에게 직접 요청해 주세요.', r: 'ds' },
