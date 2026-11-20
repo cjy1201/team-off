@@ -3182,7 +3182,8 @@ function mealJobHtml(j) {
   if (j.status === 'queued') return `<div class="infobox" style="margin:8px 0 0"><b>요청 대기 중</b> · 승인 PC가 확인하면 처리돼요. ${when}${j.message ? `<br><span class="small">${esc(j.message)}</span>` : ''}</div>`;
   if (j.status === 'working') return `<div class="infobox" style="margin:8px 0 0"><b>승인 PC가 처리 중이에요…</b> ${when}</div>`;
   const ok = j.status === 'done';
-  return `<div class="${ok ? 'infobox' : 'warnbox'}" style="margin:8px 0 0"><b>${ok ? '처리 완료' : j.status === 'expired' ? '요청 만료' : '처리 실패'}</b> · ${esc(j.message)} ${when}
+  const none = ok && !j.approved.length && !j.failed.length; // PAYCO에 내 대기 신청이 없었음
+  return `<div class="${ok ? 'infobox' : 'warnbox'}" style="margin:8px 0 0"><b>${none ? '승인할 신청 없음' : ok ? '처리 완료' : j.status === 'expired' ? '요청 만료' : '처리 실패'}</b> · ${esc(j.message)} ${when}
     ${items(j.approved, '')}${items(j.failed, ' (승인 안 됨)')}</div>`;
 }
 function openMealAgent(r) {
