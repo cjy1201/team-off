@@ -7,12 +7,12 @@
 //   BACKEND = 'gas' (기본) → Apps Script로 전달 / 'd1' → Cloudflare DB(D1)에서 직접 처리 (Code.gs 로직 그대로)
 //   MAINTENANCE = 'readonly' → 저장 요청만 잠시 막음 (DB 전환 순간에 사용)
 import { handleD1, logHistory } from '../lib/d1-backend.js';
-import { approveMyMeal, checkMyMeal } from '../lib/meal.js';
+import { approveMyMeal, checkMyMeal, probeMeal } from '../lib/meal.js';
 
 const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzzzEiIUU3mQzt';
 
 // 조회만 하는 요청은 구글 응답 전달(echo)이 실패하면 다시 보내도 안전하다
-const READ_ONLY = new Set(['getBootstrap', 'checkLeave', 'getTasks', 'checkTaskAbsence', 'checkMeal']);
+const READ_ONLY = new Set(['getBootstrap', 'checkLeave', 'getTasks', 'checkTaskAbsence', 'checkMeal', 'testMeal']);
 
 const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: HEADERS });
@@ -22,14 +22,19 @@ const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, 
  * DS직원만 쓸 수 있다 (PM이 팀원 관리에서 체크 — me.ds).
  * 토큰 검증은 getBootstrap을 그대로 써서 Code.gs와 같은 규칙(만료·비밀번호 변경 시 무효)을 따른다.
  */
-const MEAL = { checkMeal: checkMyMeal, approveMeal: approveMyMeal };
+const MEAL = { checkMeal: checkMyMeal, approveMeal: approveMyMeal, testMeal: probeMeal }; // testMeal: PM 전용 연결 테스트 (조회만)
 async function meal(env, fn, body) {
   try {
     if (!env || env.BACKEND !== 'd1' || !env.DB) throw new Error('지금은 사용할 수 없는 기능입니다.');
-    const token = (JSON.parse(body).args || [])[0];
+    const args = JSON.parse(body).args || [];
+    const token = args[0];
     const boot = JSON.parse(await handleD1(env.DB, JSON.stringify({ fn: 'getBootstrap', args: [token] })));
     const me = boot.ok && boot.data && boot.data.state && boot.data.state.me;
     if (!me) throw new Error('AUTH:로그인이 만료되었습니다. 다시 로그인하세요.');
+    if (fn === 'testMeal') {
+      if (me.role !== 'pm') throw new Error('PM(관리자)만 사용할 수 있는 기능입니다.');
+      return { ok: true, data: await probeMeal(env, me.name, args[1]) };
+    }
     if (!me.ds) throw new Error('DS직원만 사용할 수 있는 기능입니다. PM에게 요청하세요.'); // 팀원 관리의 'DS직원' 체크
     const data = await MEAL[fn](env, me.name);
     if (fn === 'approveMeal' && (data.approved.length || data.failed.length)) {

@@ -673,7 +673,7 @@ function callBridge(fn, args) {
 }
 
 // 조회만 하는 요청 — 응답을 못 받으면 자동으로 다시 보내도 안전하다
-const READ_ONLY = { getBootstrap: true, checkLeave: true, getTasks: true, checkTaskAbsence: true, checkMeal: true };
+const READ_ONLY = { getBootstrap: true, checkLeave: true, getTasks: true, checkTaskAbsence: true, checkMeal: true, testMeal: true };
 
 /*
  * 회사망(모개망)은 외부 사이트로 가는 POST 요청을 보안 장비가 가로채서 안내 문구로 바꿔치기한다.
@@ -3112,9 +3112,9 @@ function bellButton() {
 /** 식권(PAYCO) 본인 신청 승인 — Cloudflare 서버(/api, functions/api.js)에서만 동작 */
 const MEAL_ON = MODE === 'api' && /\.pages\.dev$/.test(location.hostname);
 function mealButton() {
-  if (!MEAL_ON || !S.me.ds) return ''; // DS직원만 (PM이 팀원 관리에서 체크)
-  return `<button class="icon-btn ghost-btn meal" data-act="meal" title="식권 승인" aria-label="식권 승인">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a3 3 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a3 3 0 0 0 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M14 5v2"/><path d="M14 11v2"/><path d="M14 17v2"/></svg></button>`;
+  if (!MEAL_ON || !(S.me.ds || isAdmin())) return ''; // 식권 승인은 DS직원만 (PM이 팀원 관리에서 체크), 연결 테스트는 PM
+  return `${isAdmin() ? '<button class="btn sm" data-act="mealTest" title="서버가 PAYCO 승인 화면을 읽을 수 있는지 확인 (승인은 안 함)">식권 테스트</button>' : ''}${S.me.ds ? `<button class="icon-btn ghost-btn meal" data-act="meal" title="식권 승인" aria-label="식권 승인">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a3 3 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a3 3 0 0 0 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M14 5v2"/><path d="M14 11v2"/><path d="M14 17v2"/></svg></button>` : ''}`;
 }
 /** 내 대기 신청을 먼저 조회해서 보여주고, 확인하면 승인 */
 async function approveMeal() {
@@ -3145,6 +3145,28 @@ async function approveMeal() {
   } finally {
     loading(false);
   }
+}
+
+/** PM: 식권 연결 테스트 — 승인 화면 주소를 붙여 넣으면 서버가 그 주소로 목록을 읽을 수 있는지만 확인 (승인 안 함, 주소는 저장 안 함) */
+function openMealTest() {
+  const m = openModal(`<header><h3>식권 연결 테스트</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div class="infobox" style="margin:0 0 10px">PC에서 열리는 PAYCO 승인 화면 주소를 붙여 넣으세요. 서버가 그 주소로 승인 목록을 읽을 수 있는지만 확인해요. 승인은 하지 않고 주소도 저장하지 않아요.</div>
+      <div class="field"><label>승인 화면 주소</label><input name="murl" placeholder="bizplus.payco.com 승인 화면 주소 (companyCode=...&amp;bizRoleAssignedEmployeeSeq=...)" autocomplete="off"></div>
+      <div data-mres></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>닫기</button><button class="btn primary" data-mgo>테스트</button></footer>`);
+  m.querySelector('[data-mgo]').onclick = async () => {
+    const box = m.querySelector('[data-mres]');
+    loading(true);
+    try {
+      const r = await api('testMeal', m.querySelector('[name=murl]').value);
+      box.innerHTML = `<div class="${r.ok ? 'infobox' : 'warnbox'}" style="margin:8px 0 0"><b>${r.ok ? '성공' : '실패'}</b> · ${esc(r.message)}
+        ${r.ok ? `<br><span class="small">내 이름(${esc(S.me.name)}) 대기 신청: ${r.mine.length ? esc(r.mine.join(', ')) : '없음'}</span>` : ''}
+        <br><span class="small muted">서버 비밀 변수 PAYCO_APPROVER_SEQ: ${r.secretSet ? (r.secretSame ? '설정됨 (이 주소와 같음)' : '설정됨 (이 주소와 다름)') : '아직 없음'}</span></div>`;
+    } catch (e) { box.innerHTML = `<div class="warnbox" style="margin:8px 0 0">${esc((e && e.message) || String(e))}</div>`; }
+    finally { loading(false); }
+  };
 }
 
 /** '방금' · 'N분 전' · 'N시간 전' · '10/3 14:02' */
@@ -5291,6 +5313,7 @@ document.addEventListener('click', (e) => {
     case 'shortcuts': openShortcuts(); break;
     case 'refresh': refreshData(true); break;
     case 'meal': approveMeal(); break;
+    case 'mealTest': openMealTest(); break;
     case 'copyAttendance': openAttendance(v); break;
     case 'logout': setToken(''); syncUrlToken(''); S = null; W.loaded = false; W.tasks = []; R.loaded = false; R.list = []; E.loaded = false; E.items = []; N.loaded = false; N.d = null; N.person = ''; closeModal(); screen = 'login'; ui.tab = 'cal'; render(); break;
     case 'reload': boot(); break;
