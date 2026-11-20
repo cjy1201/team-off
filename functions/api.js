@@ -8,11 +8,12 @@
 //   MAINTENANCE = 'readonly' → 저장 요청만 잠시 막음 (DB 전환 순간에 사용)
 import { handleD1, logHistory } from '../lib/d1-backend.js';
 import { approveMyMeal, checkMyMeal, probeMeal } from '../lib/meal.js';
+import { mealOverview, mealStatus, requestMeal } from '../lib/meal-queue.js';
 
 const DEPLOY_ID = 'AKfycbyJlnAadwmv1SzNsrGRL01ornXEGcSefstb79pJKqld6RsVVSzzbnIzzzEiIUU3mQzt';
 
 // 조회만 하는 요청은 구글 응답 전달(echo)이 실패하면 다시 보내도 안전하다
-const READ_ONLY = new Set(['getBootstrap', 'checkLeave', 'getTasks', 'checkTaskAbsence', 'checkMeal', 'testMeal']);
+const READ_ONLY = new Set(['getBootstrap', 'checkLeave', 'getTasks', 'checkTaskAbsence', 'checkMeal', 'testMeal', 'mealStatus']);
 
 const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: HEADERS });
@@ -21,8 +22,13 @@ const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, 
  * 식권 (Code.gs 밖의 기능): 로그인한 직원 본인 이름으로 들어온 PAYCO 신청만 조회(checkMeal)·승인(approveMeal)한다.
  * DS직원만 쓸 수 있다 (PM이 팀원 관리에서 체크 — me.ds).
  * 토큰 검증은 getBootstrap을 그대로 써서 Code.gs와 같은 규칙(만료·비밀번호 변경 시 무효)을 따른다.
+ *
+ * MEAL_AGENT_KEY(비밀 변수)가 있으면 '승인 PC' 방식: 서버는 요청을 대기열에 넣기만 하고 집 맥북이 승인한다 (lib/meal-queue.js).
+ *   checkMeal → 승인 PC 상태 + 내 최근 요청 / approveMeal → 승인 요청 넣기 / mealStatus → 요청 결과 확인
+ * 없으면 예전 방식(서버가 PAYCO에 직접 승인, lib/meal.js) — 2026-11부터 PAYCO가 막아서 화면이 안내 팝업을 띄운다.
  */
-const MEAL = { checkMeal: checkMyMeal, approveMeal: approveMyMeal, testMeal: probeMeal }; // testMeal: PM 전용 연결 테스트 (조회만)
+const MEAL = { checkMeal: checkMyMeal, approveMeal: approveMyMeal, testMeal: probeMeal, mealStatus: null }; // testMeal: PM 전용 연결 테스트 (조회만)
+const MEAL_AGENT = { checkMeal: (env, me) => mealOverview(env, me), approveMeal: (env, me) => requestMeal(env, me), mealStatus: (env, me, args) => mealStatus(env, me, args[1]) };
 async function meal(env, fn, body) {
   try {
     if (!env || env.BACKEND !== 'd1' || !env.DB) throw new Error('지금은 사용할 수 없는 기능입니다.');
@@ -36,6 +42,8 @@ async function meal(env, fn, body) {
       return { ok: true, data: await probeMeal(env, me.name, args[1]) };
     }
     if (!me.ds) throw new Error('DS직원만 사용할 수 있는 기능입니다. PM에게 요청하세요.'); // 팀원 관리의 'DS직원' 체크
+    if (env.MEAL_AGENT_KEY && MEAL_AGENT[fn]) return { ok: true, data: await MEAL_AGENT[fn](env, me, args) }; // 승인 결과 이력은 맥북이 보고할 때 남긴다
+    if (!MEAL[fn]) throw new Error('지금은 사용할 수 없는 기능입니다.');
     const data = await MEAL[fn](env, me.name);
     if (fn === 'approveMeal' && (data.approved.length || data.failed.length)) {
       // 승인은 이미 끝났으므로 이력 기록이 실패해도 결과는 그대로 돌려준다

@@ -673,7 +673,7 @@ function callBridge(fn, args) {
 }
 
 // 조회만 하는 요청 — 응답을 못 받으면 자동으로 다시 보내도 안전하다
-const READ_ONLY = { getBootstrap: true, checkLeave: true, getTasks: true, checkTaskAbsence: true, checkMeal: true, testMeal: true };
+const READ_ONLY = { getBootstrap: true, checkLeave: true, getTasks: true, checkTaskAbsence: true, checkMeal: true, testMeal: true, mealStatus: true };
 
 /*
  * 회사망(모개망)은 외부 사이트로 가는 POST 요청을 보안 장비가 가로채서 안내 문구로 바꿔치기한다.
@@ -3139,6 +3139,7 @@ async function approveMeal() {
   } finally {
     loading(false);
   }
+  if (r.mode === 'agent') return openMealAgent(r); // 승인 PC(집 맥북) 방식
   if (!r.pending.length) {
     openModal(`<header><h3>식권 승인</h3><button class="btn ghost sm" data-close>닫기</button></header>
       <div class="content"><p>${esc(r.message)}</p></div>`);
@@ -3157,6 +3158,73 @@ async function approveMeal() {
   } finally {
     loading(false);
   }
+}
+
+/*
+ * 식권 승인 — 승인 PC(집 맥북) 방식 (서버에 MEAL_AGENT_KEY가 있을 때, functions/api.js · lib/meal-queue.js)
+ * [승인 요청] → 서버 대기열 → 승인 PC가 30초마다 가져가서 PAYCO에서 내 이름의 대기 신청만 승인 → 결과를 이 창에서 확인
+ */
+const MEAL_ACTIVE = { queued: true, working: true };
+function mealAgentHtml(a) {
+  const seen = a.seen ? ` (마지막 확인 ${esc(agoText(a.seen))})` : '';
+  if (a.state === 'ok') return `<p class="muted small">승인 PC 연결됨${seen}</p>`;
+  if (a.state === 'login') return `<div class="warnbox" style="margin:0 0 10px">승인 PC의 PAYCO 로그인이 풀렸어요${seen}. 승인권자가 다시 로그인하면 요청이 처리돼요.</div>`;
+  if (a.state === 'offline') return `<div class="warnbox" style="margin:0 0 10px">승인 PC가 꺼져 있는 것 같아요${seen}. 요청해 두면 12시간 안에 켜질 때 처리돼요.</div>`;
+  return '<div class="warnbox" style="margin:0 0 10px">승인 PC가 아직 연결되지 않았어요. 요청해 두면 연결된 뒤 처리돼요 (12시간 안).</div>';
+}
+function mealJobHtml(j) {
+  if (!j) return '';
+  const when = `<span class="muted small">${esc(agoText(j.created))} 요청</span>`;
+  const items = (arr, sfx) => (arr.length ? `<ul>${arr.map((x) => `<li>${esc(x)}${sfx}</li>`).join('')}</ul>` : '');
+  if (j.status === 'queued') return `<div class="infobox" style="margin:8px 0 0"><b>요청 대기 중</b> · 승인 PC가 곧 확인해요. ${when}${j.message ? `<br><span class="small">${esc(j.message)}</span>` : ''}</div>`;
+  if (j.status === 'working') return `<div class="infobox" style="margin:8px 0 0"><b>승인 PC가 처리 중이에요…</b> ${when}</div>`;
+  const ok = j.status === 'done';
+  return `<div class="${ok ? 'infobox' : 'warnbox'}" style="margin:8px 0 0"><b>${ok ? '처리 완료' : j.status === 'expired' ? '요청 만료' : '처리 실패'}</b> · ${esc(j.message)} ${when}
+    ${items(j.approved, '')}${items(j.failed, ' (승인 안 됨)')}</div>`;
+}
+function openMealAgent(r) {
+  const m = openModal(`<header><h3>식권 승인</h3><button class="btn ghost sm" data-close>닫기</button></header>
+    <div class="content">
+      <div data-magent></div>
+      <p>PAYCO에서 식권을 신청한 뒤 <b>[승인 요청]</b>을 누르세요. 승인 PC가 <b>${esc(S.me.name)}</b> 이름으로 들어온 대기 신청만 승인해요.</p>
+      <p class="muted small">다른 사람의 신청은 건드리지 않아요. 보통 1분 안에 처리돼요.</p>
+      <div data-mjob></div>
+    </div>
+    <footer><span class="spacer"></span><button class="btn" data-close>닫기</button><button class="btn primary" data-mreq>승인 요청</button></footer>`);
+  const btn = m.querySelector('[data-mreq]');
+  let job = r.job, polling = false;
+  const show = (x) => {
+    if (x.agent) m.querySelector('[data-magent]').innerHTML = mealAgentHtml(x.agent);
+    job = x.job || job;
+    m.querySelector('[data-mjob]').innerHTML = mealJobHtml(job);
+    const active = !!(job && MEAL_ACTIVE[job.status]);
+    btn.disabled = active;
+    btn.textContent = active ? '처리 기다리는 중…' : '승인 요청';
+    return active;
+  };
+  // 창이 열려 있는 동안 4초마다 결과 확인 (최대 5분 — 그 뒤에는 식권 버튼을 다시 눌러 확인)
+  async function poll() {
+    if (polling) return;
+    polling = true;
+    const until = Date.now() + 5 * 60e3;
+    try {
+      while (m.isConnected && job && MEAL_ACTIVE[job.status] && Date.now() < until) {
+        await new Promise((res) => setTimeout(res, 4000));
+        if (!m.isConnected) return;
+        let x;
+        try { x = await api('mealStatus', job.id); } catch (e) { continue; } // 잠깐 끊겨도 계속 확인
+        if (!show(x)) toast(job.message, job.status !== 'done');
+      }
+    } finally { polling = false; }
+  }
+  btn.onclick = async () => {
+    btn.disabled = true;
+    loading(true);
+    try { if (show(await api('approveMeal'))) poll(); }
+    catch (e) { btn.disabled = false; handleError(e); }
+    finally { loading(false); }
+  };
+  if (show(r)) poll();
 }
 
 /** PM: 식권 연결 테스트 — 승인 화면 주소를 붙여 넣으면 서버가 그 주소로 목록을 읽을 수 있는지만 확인 (승인 안 함, 주소는 저장 안 함) */
@@ -4287,7 +4355,8 @@ const GUIDE = [
     { x: '데이터는 1시간마다 스프레드시트에 자동 백업돼요. 마지막 백업 시각은 팀원 관리 위쪽에 보여요.' },
   ] },
   { r: 'ds', t: '식권 (상단 식권 아이콘, DS직원)', items: [
-    { x: 'PAYCO에서 식권을 신청한 뒤 상단 식권 아이콘을 누르면, 내 이름으로 들어온 대기 신청이 보이고 확인하면 승인돼요.' },
+    { x: 'PAYCO에서 식권을 신청한 뒤 상단 식권 아이콘 → [승인 요청]을 누르면, 승인 PC가 내 이름으로 들어온 대기 신청을 승인해요. 결과는 그 창에서 바로 보여요 (보통 1분 안).' },
+    { x: "승인 PC가 꺼져 있거나 PAYCO 로그인이 풀려 있으면 창에 안내가 보여요. 요청은 12시간 동안 남아 있다가 승인 PC가 돌아오면 처리돼요." },
     { x: '다른 사람의 신청은 건드리지 않아요. 같은 이름이 다른 사번으로 있으면 자동 승인하지 않으니 승인권자에게 요청하세요.' },
   ] },
   { t: '편하게 쓰기', items: [
@@ -4298,6 +4367,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-21', items: [
+    { x: '식권 승인이 다시 돼요. 상단 식권 아이콘 → [승인 요청]을 누르면 승인 PC가 내 대기 신청을 승인하고, 결과를 창에서 바로 보여줘요.', r: 'ds' },
+  ] },
   { d: '2026-11-20', items: [
     { x: 'PAYCO 정책이 바뀌어 식권 자동 승인이 막혔어요. 식권 버튼을 누르면 안내가 뜨니, 승인권자에게 직접 요청해 주세요.', r: 'ds' },
     { x: '캘린더 · 업무 일정에서 [월 | 2주]로 보기를 바꿀 수 있어요. 2주 보기는 칸이 커서 하루에 더 많은 일정이 보이고, 긴 업무 제목은 두 줄까지 보여요. ‹ › 는 1주씩 넘어가고, 마지막 보기를 기억해요.' },
