@@ -156,6 +156,7 @@
   .cal-head div { padding: 8px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; border-bottom: 1px solid var(--border); }
   .cal-head div:first-child { color: var(--sun); }
   .cal-head div:last-child { color: var(--sat); }
+  .cal.two .day { min-height: 300px; } /* 2주 보기: 줄이 두 개라 칸을 크게 */
   .day { min-height: 130px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 4px; cursor: pointer; position: relative; min-width: 0; }
   .day:nth-child(7n) { border-right: 0; }
   .day:hover { background: var(--surface-2); }
@@ -175,6 +176,7 @@
   .chip.conflict { outline: 2px solid var(--danger); outline-offset: -1px; }
   .chip.mine { box-shadow: inset 0 0 0 1.5px #fff; font-weight: 800; } /* 내 일정: 칩 안쪽 흰 테두리 + 굵게 */
   .chip .w { flex: none; }
+  .cal.two .chip { white-space: normal; align-items: flex-start; } .cal.two .chip .nm { word-break: break-all; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } /* 2주 보기: 긴 제목은 두 줄까지 */
   .more { font-size: 11px; color: var(--muted); margin-top: 2px; padding-left: 4px; }
   .t-연차 { background: var(--t-annual); } .t-오전반차 { background: var(--t-am); } .t-오후반차 { background: var(--t-pm); }
   .t-반반차 { background: var(--t-qpm); } .t-병가 { background: var(--t-sick); } .t-연수\/교육 { background: var(--t-edu); } .t-기타 { background: var(--t-etc); }
@@ -459,6 +461,7 @@
     .cal-head, .cal-grid { grid-template-columns: minmax(0, .6fr) repeat(5, minmax(0, 1fr)) minmax(0, .6fr); }
     .cal-head div { padding: 8px 2px; }
     .day { min-height: 108px; padding: 2px; }
+    .cal.two .day { min-height: 220px; }
     .dnum { font-size: 11px; width: 20px; height: 20px; }
     .hname { display: none; }
     .chip { font-size: 10px; padding: 0 3px; border-radius: 3px; }
@@ -501,6 +504,47 @@ const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const weekOf = (d) => addDays(d, -d.getDay()); // 그 주 일요일
+/** 달력 보기 범위 (k: 'cal' 캘린더 / 'work' 업무 일정) — 한 달 또는 2주 (업무 타임라인은 항상 한 달) */
+function viewRange(k) {
+  const two = k === 'cal' ? ui.calSpan === '2w' : ui.workSpan === '2w' && ui.workView !== 'timeline';
+  const first = k === 'cal' ? ui.month : ui.workMonth;
+  if (two) {
+    const start = k === 'cal' ? ui.calWeek : ui.workWeek, end = addDays(start, 13);
+    const md = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일`;
+    const yr = start.getFullYear() !== new Date().getFullYear() ? `${start.getFullYear()}년 ` : '';
+    return { two, first, start, end, weeks: 2, title: `${yr}${md(start)} ~ ${end.getMonth() === start.getMonth() ? end.getDate() + '일' : md(end)}` };
+  }
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  return { two, first, start: addDays(first, -first.getDay()), end: last, weeks: Math.ceil((first.getDay() + last.getDate()) / 7), title: `${first.getFullYear()}년 ${first.getMonth() + 1}월` };
+}
+/** 이전 · 다음 · 오늘 (v: '-1' | '1' | '0') — 2주 보기는 1주씩 넘김 */
+function calMove(k, v) {
+  const t0 = new Date(), n = Number(v);
+  if (viewRange(k).two) {
+    const wk = v === '0' ? weekOf(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate())) : addDays(k === 'cal' ? ui.calWeek : ui.workWeek, 7 * n);
+    if (k === 'cal') ui.calWeek = wk; else ui.workWeek = wk;
+    const mid = addDays(wk, 3); // 2주 ↔ 월 전환할 때 이어지게 달도 맞춤
+    if (k === 'cal') ui.month = new Date(mid.getFullYear(), mid.getMonth(), 1); else ui.workMonth = new Date(mid.getFullYear(), mid.getMonth(), 1);
+    return;
+  }
+  const cur = k === 'cal' ? ui.month : ui.workMonth;
+  const m = v === '0' ? new Date(t0.getFullYear(), t0.getMonth(), 1) : new Date(cur.getFullYear(), cur.getMonth() + n, 1);
+  if (k === 'cal') ui.month = m; else ui.workMonth = m;
+}
+/** 월 ↔ 2주 전환: 2주로 갈 때는 보던 달에 오늘이 있으면 이번 주, 아니면 그 달 첫 주부터 */
+function calSpan(k, span) {
+  const first = k === 'cal' ? ui.month : ui.workMonth;
+  if (span === '2w') {
+    const t = new Date(), inMonth = t.getFullYear() === first.getFullYear() && t.getMonth() === first.getMonth();
+    const wk = weekOf(inMonth ? new Date(t.getFullYear(), t.getMonth(), t.getDate()) : first);
+    if (k === 'cal') ui.calWeek = wk; else ui.workWeek = wk;
+  }
+  if (k === 'cal') ui.calSpan = span; else ui.workSpan = span;
+  savePrefs();
+}
+const spanSwitch = (k) => { const two = (k === 'cal' ? ui.calSpan : ui.workSpan) === '2w';
+  return `<div class="view-switch" title="한 달 / 2주 보기"><button class="${two ? '' : 'on'}" data-act="span" data-v="${k}|month">월</button><button class="${two ? 'on' : ''}" data-act="span" data-v="${k}|2w">2주</button></div>`; };
 const todayStr = () => ymd(new Date());
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtShort = (s) => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]})`; };
@@ -1560,7 +1604,7 @@ const TAB_KEY = 'team-off-tab'; // 마지막에 보던 탭 (이 기기만)
 const PREF_KEY = 'team-off-prefs';
 const PREFS = (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (e) { return {}; } })();
 function savePrefs() {
-  const p = { mineOnly: ui.mineOnly, workMine: ui.workMine, warnOnly: !!ui.allFilter.warnOnly, noLogin: HX.noLogin, memberGroup: ui.memberGroup };
+  const p = { mineOnly: ui.mineOnly, workMine: ui.workMine, warnOnly: !!ui.allFilter.warnOnly, noLogin: HX.noLogin, memberGroup: ui.memberGroup, calSpan: ui.calSpan, workSpan: ui.workSpan };
   try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch (e) {}
 }
 const ui = {
@@ -1577,6 +1621,10 @@ const ui = {
   workView: 'cal', // 'cal' 캘린더 / 'timeline' 타임라인
   memberGroup: PREFS.memberGroup === 'vendor' ? 'vendor' : 'part', // 팀원 관리 묶어 보기 (파트별 / 업체별, 이 기기에 기억)
   usageSort: { key: 'name', dir: 'asc' }, // 전체 일정 · 사용 현황 표 정렬
+  calSpan: PREFS.calSpan === '2w' ? '2w' : 'month', // 캘린더 보기: 'month' 한 달 / '2w' 2주 (이 기기에 기억)
+  workSpan: PREFS.workSpan === '2w' ? '2w' : 'month', // 업무 일정 캘린더 보기
+  calWeek: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate() - t.getDay()); })(), // 2주 보기 첫 주 (일요일)
+  workWeek: (() => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate() - t.getDay()); })(),
 };
 let D = {}; // 파생 데이터
 
@@ -1920,19 +1968,16 @@ function viewCalendar() {
     <div class="card stat ${warn ? 'warn' : ''}" ${go ? `data-act="${go.act || 'tab'}" data-v="${go.v || go}" style="cursor:pointer"` : ''}>
       <div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`).join('')}</div>`;
 
-  // 달력
-  const first = ui.month;
-  const start = addDays(first, -first.getDay());
-  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-  const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
-  const maxChips = 5;
+  // 달력 (한 달 또는 2주 — 2주는 칸이 커서 더 많이 보임)
+  const rg = viewRange('cal'), first = rg.first, start = rg.start, weeks = rg.weeks;
+  const maxChips = rg.two ? 14 : 5;
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(start, i);
     const ds = ymd(d);
     let items = leavesOn(ds);
     if (ui.mineOnly) items = items.filter((l) => l.email === me || l.substitutes.includes(me));
-    const cls = ['day', d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
+    const cls = ['day', !rg.two && d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
     const evs = eventsOn(ds);
     const room = Math.max(maxChips - evs.length, 1);
     const shown = items.slice(0, items.length > room ? room - 1 : room);
@@ -1967,12 +2012,13 @@ function viewCalendar() {
   return a2hsBanner() + upcomingHtml + statsHtml + `
     <div class="cal-toolbar">
       <div class="month-nav">
-        <button class="icon-btn" data-act="month" data-v="-1" aria-label="이전 달">‹</button>
-        <h2>${first.getFullYear()}년 ${first.getMonth() + 1}월</h2>
-        <button class="icon-btn" data-act="month" data-v="1" aria-label="다음 달">›</button>
+        <button class="icon-btn" data-act="month" data-v="-1" aria-label="${rg.two ? '이전 주' : '이전 달'}">‹</button>
+        <h2>${rg.title}</h2>
+        <button class="icon-btn" data-act="month" data-v="1" aria-label="${rg.two ? '다음 주' : '다음 달'}">›</button>
         <button class="btn sm" data-act="month" data-v="0" style="margin-left:4px">오늘</button>
       </div>
       <div class="cal-actions">
+        ${spanSwitch('cal')}
         ${canSeeAll() ? partSelect() : ''}
         ${canSeeAll() ? `<button class="btn" data-act="copyAttendance" data-v="${today}">오늘 근태 복사</button>` : ''}
         ${isAdmin() ? '<button class="btn" data-act="newEvent">+ 중요 일정</button>' : ''}
@@ -1980,7 +2026,7 @@ function viewCalendar() {
         <button class="btn primary" data-act="newLeave">+ 일정 등록</button>
       </div>
     </div>
-    <div class="card cal">
+    <div class="card cal${rg.two ? ' two' : ''}">
       <div class="cal-head">${WEEK.map((w) => `<div>${w}</div>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
     </div>
@@ -2198,20 +2244,17 @@ function viewWork() {
   }
   const today = todayStr();
   const list = workFiltered();
-  const first = ui.workMonth;
+  const rg = viewRange('work'), first = rg.first, start = rg.start, weeks = rg.weeks;
   const summary = workSummary(list);
-  const start = addDays(first, -first.getDay());
-  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-  const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
   const mobile = window.matchMedia('(max-width: 640px)').matches;
   const canDrag = !mobile && window.matchMedia('(pointer: fine)').matches; // PC(마우스)에서만 끌어서 옮기기
-  const maxChips = 5;
+  const maxChips = rg.two ? 14 : 5;
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(start, i);
     const ds = ymd(d);
     const items = tasksOn(ds, list);
-    const cls = ['day', d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
+    const cls = ['day', !rg.two && d.getMonth() !== first.getMonth() && 'out', d.getDay() === 0 && 'sun', d.getDay() === 6 && 'sat', D.holidays[ds] && 'hol', ds === today && 'today'].filter(Boolean).join(' ');
     const evs = (S.events || []).filter((e) => e.startDate <= ds && ds <= e.endDate); // 중요 일정도 업무 캘린더 맨 위에 ★
     const room = Math.max(maxChips - evs.length, 1);
     const shown = items.slice(0, items.length > room ? room - 1 : room);
@@ -2223,7 +2266,8 @@ function viewWork() {
     </div>`;
   }
   const ym = `${first.getFullYear()}-${pad(first.getMonth() + 1)}`;
-  const monthAll = list.filter((t) => t.startDate.slice(0, 7) <= ym && ym <= t.endDate.slice(0, 7))
+  const rs = ymd(rg.start), re = ymd(rg.end);
+  const monthAll = list.filter((t) => (rg.two ? t.startDate <= re && rs <= t.endDate : t.startDate.slice(0, 7) <= ym && ym <= t.endDate.slice(0, 7)))
     .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.part.localeCompare(b.part));
   const monthList = ui.workHidePast ? monthAll.filter((t) => t.endDate >= today) : monthAll; // 지난 업무 = 종료일이 오늘보다 전
 
@@ -2234,19 +2278,20 @@ function viewWork() {
     ${summary}
     <div class="cal-toolbar">
       <div class="month-nav">
-        <button class="icon-btn" data-act="wmonth" data-v="-1" aria-label="이전 달">‹</button>
-        <h2>${first.getFullYear()}년 ${first.getMonth() + 1}월</h2>
-        <button class="icon-btn" data-act="wmonth" data-v="1" aria-label="다음 달">›</button>
+        <button class="icon-btn" data-act="wmonth" data-v="-1" aria-label="${rg.two ? '이전 주' : '이전 달'}">‹</button>
+        <h2>${rg.title}</h2>
+        <button class="icon-btn" data-act="wmonth" data-v="1" aria-label="${rg.two ? '다음 주' : '다음 달'}">›</button>
         <button class="btn sm" data-act="wmonth" data-v="0" style="margin-left:4px">오늘</button>
       </div>
       <div class="cal-actions">
         <div class="view-switch"><button class="${ui.workView === 'cal' ? 'on' : ''}" data-act="wview" data-v="cal">캘린더</button><button class="${ui.workView === 'timeline' ? 'on' : ''}" data-act="wview" data-v="timeline">타임라인</button></div>
+        ${ui.workView === 'timeline' ? '' : spanSwitch('work')}
         <label class="toggle"><input type="checkbox" data-act="wmine" ${ui.workMine ? 'checked' : ''}> 내 업무만</label>
         ${isAdmin() ? '<button class="btn" data-act="newEvent">+ 중요 일정</button>' : ''}
         <button class="btn primary" data-act="newTask">+ 업무 등록</button>
       </div>
     </div>
-    ${ui.workView === 'timeline' ? workTimeline(list, first) : `<div class="card cal">
+    ${ui.workView === 'timeline' ? workTimeline(list, first) : `<div class="card cal${rg.two ? ' two' : ''}">
       <div class="cal-head">${WEEK.map((w) => `<div>${w}</div>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
     </div>`}
@@ -2254,9 +2299,9 @@ function viewWork() {
       <span><span style="color:var(--evt)">★</span> 중요 일정</span>
       <span><span style="color:var(--warn)">⚠</span> 담당자 부재</span>
       <span>· 휴가 일정과는 별도로 관리됩니다</span></div>
-    <div class="section-title"><span>${first.getMonth() + 1}월 업무 <span class="muted small">${monthList.length}건${monthAll.length > monthList.length ? ` · 지난 업무 ${monthAll.length - monthList.length}건 숨김` : ''}</span></span>
+    <div class="section-title"><span>${rg.two ? '이 2주' : first.getMonth() + 1 + '월'} 업무 <span class="muted small">${monthList.length}건${monthAll.length > monthList.length ? ` · 지난 업무 ${monthAll.length - monthList.length}건 숨김` : ''}</span></span>
       <label class="toggle"><input type="checkbox" data-act="wpast" ${ui.workHidePast ? 'checked' : ''}> 지난 업무 숨기기</label></div>
-    <div class="list">${monthList.length ? monthList.map(taskItem).join('') : `<div class="card empty">${monthAll.length ? '이 달 업무는 모두 지났습니다.' : '이 달에 등록된 업무가 없습니다.'}</div>`}</div>`;
+    <div class="list">${monthList.length ? monthList.map(taskItem).join('') : `<div class="card empty">${monthAll.length ? `이 ${rg.two ? '2주' : '달'} 업무는 모두 지났습니다.` : `이 ${rg.two ? '2주' : '달'}에 등록된 업무가 없습니다.`}</div>`}</div>`;
 }
 
 function openWorkDay(ds) {
@@ -3137,7 +3182,7 @@ function goNews(go) {
   const kind = go.slice(0, i), val = go.slice(i + 1);
   if (kind === 'day') {
     const d = parse(val);
-    ui.tab = 'cal'; ui.month = new Date(d.getFullYear(), d.getMonth(), 1);
+    ui.tab = 'cal'; ui.month = new Date(d.getFullYear(), d.getMonth(), 1); ui.calWeek = weekOf(d);
     render(); flashDate(val); // 그 날짜 칸으로 스크롤해서 잠깐 강조 (칸을 누르면 상세)
   } else if (kind === 'tab') {
     ui.tab = val; render(); window.scrollTo(0, 0);
@@ -4219,6 +4264,9 @@ const GUIDE = [
   ] },
 ];
 const UPDATES = [
+  { d: '2026-11-20', items: [
+    { x: '캘린더 · 업무 일정에서 [월 | 2주]로 보기를 바꿀 수 있어요. 2주 보기는 칸이 커서 하루에 더 많은 일정이 보이고, 긴 업무 제목은 두 줄까지 보여요. ‹ › 는 1주씩 넘어가고, 마지막 보기를 기억해요.' },
+  ] },
   { d: '2026-11-19', items: [
     { x: "요청함 면담 시간대에서 지난 날짜는 비어 있어도 고를 수 없어요 ('지남'으로 표시). 이미 고른 시간은 그대로예요." },
   ] },
@@ -4392,7 +4440,8 @@ function openGuide() {
 /** 캘린더에서 그 날짜가 있는 달로 가서 칸을 잠깐 강조 (휴가 등록·수정 후) */
 function flashDate(ds) {
   const d = parse(ds);
-  if (ui.month.getFullYear() !== d.getFullYear() || ui.month.getMonth() !== d.getMonth()) { ui.month = new Date(d.getFullYear(), d.getMonth(), 1); render(); }
+  const rg = viewRange('cal');
+  if (rg.two ? d < rg.start || d > rg.end : ui.month.getFullYear() !== d.getFullYear() || ui.month.getMonth() !== d.getMonth()) { ui.month = new Date(d.getFullYear(), d.getMonth(), 1); ui.calWeek = weekOf(d); render(); }
   const cell = document.querySelector(`.cal-grid .day[data-v="${ds}"]`);
   if (!cell) return;
   cell.classList.add('flash');
@@ -5190,11 +5239,8 @@ document.addEventListener('click', (e) => {
     case 'memoMore': { const m = t.previousElementSibling; const shut = m.classList.toggle('memo-clamp'); t.textContent = shut ? '더 보기' : '접기'; break; }
     case 'a2hsHide': try { localStorage.setItem(A2HS_KEY, '1'); } catch (e) {} render(); break;
     case 'tab': goTab(v); break;
-    case 'month': {
-      const t0 = new Date();
-      ui.month = v === '0' ? new Date(t0.getFullYear(), t0.getMonth(), 1) : new Date(ui.month.getFullYear(), ui.month.getMonth() + Number(v), 1);
-      render(); break;
-    }
+    case 'month': calMove('cal', v); render(); break;
+    case 'span': { const [k, sp] = v.split('|'); calSpan(k, sp); render(); break; }
     case 'day': openDay(v); break;
     case 'newLeave': openLeaveForm(null); break;
     case 'editLeave': openLeaveForm(v); break;
@@ -5209,11 +5255,7 @@ document.addEventListener('click', (e) => {
     case 'editHoliday': openHolidayForm(v); break;
     case 'newEvent': openEventForm(null, v); break;
     case 'wpart': ui.workPart = v; render(); break;
-    case 'wmonth': {
-      const t0 = new Date();
-      ui.workMonth = v === '0' ? new Date(t0.getFullYear(), t0.getMonth(), 1) : new Date(ui.workMonth.getFullYear(), ui.workMonth.getMonth() + Number(v), 1);
-      render(); break;
-    }
+    case 'wmonth': calMove('work', v); render(); break;
     case 'wday': openWorkDay(v); break;
     case 'wview': ui.workView = v; render(); break;
     case 'wsum': openWorkGroup(v); break;
@@ -5472,8 +5514,7 @@ const REFRESH_ON_RETURN = 5 * 60000; // 앱으로 돌아왔을 때 마지막 갱
     const step = dx < 0 ? 1 : -1; // 왼쪽으로 밀면 다음 달
     set(grid, -step * w, 1, 160);
     setTimeout(() => {
-      if (ui.tab === 'work') ui.workMonth = new Date(ui.workMonth.getFullYear(), ui.workMonth.getMonth() + step, 1);
-      else ui.month = new Date(ui.month.getFullYear(), ui.month.getMonth() + step, 1);
+      calMove(ui.tab === 'work' ? 'work' : 'cal', String(step));
       render();
       const g = document.querySelector('.cal-grid');
       if (!g) return;
@@ -5481,12 +5522,12 @@ const REFRESH_ON_RETURN = 5 * 60000; // 앱으로 돌아왔을 때 마지막 갱
       void g.offsetWidth;
       set(g, 0, 0, 220);
       // 달 제목이 화면 밖에 있을 수 있어 넘긴 달을 칸 위에 잠깐 표시
-      const m = ui.tab === 'work' ? ui.workMonth : ui.month;
+      const ttl = viewRange(ui.tab === 'work' ? 'work' : 'cal').title;
       const card = g.closest('.cal');
       if (card) {
         const pill = document.createElement('div');
         pill.className = 'month-pill';
-        pill.textContent = `${m.getFullYear()}년 ${m.getMonth() + 1}월`;
+        pill.textContent = ttl;
         card.appendChild(pill);
         setTimeout(() => pill.remove(), 1000);
       }
